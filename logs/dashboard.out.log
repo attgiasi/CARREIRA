@@ -1,0 +1,9 @@
+
+> career-hunter-agent@0.1.0 dashboard
+> npm run build && node dist/src/server.js
+
+
+> career-hunter-agent@0.1.0 build
+> tsc -p tsconfig.json
+
+Painel iniciado em http://localhost:8788

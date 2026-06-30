@@ -1,0 +1,20 @@
+{"timestamp":"2026-06-28T18:21:34.725Z","module":"index","action":"prepare","result":"Candidaturas preparadas: 0.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:23:55.822Z","module":"index","action":"prepare","result":"Candidaturas preparadas: 0.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:24:18.102Z","module":"gmailJobAlerts","action":"scan","result":"Gmail não configurado; pulando leitura de alertas.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:24:18.106Z","module":"greenhouseConnector","action":"scan","result":"Nenhuma empresa Greenhouse configurada; pulando.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:24:18.107Z","module":"leverConnector","action":"scan","result":"Nenhuma empresa Lever configurada; pulando.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:24:18.108Z","module":"gupyConnector","action":"scan","result":"Gupy precisa de token/endpoints configurados; pulando.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:24:18.109Z","module":"rssConnector","action":"scan","result":"RSS não configurado; pulando sem erro.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:24:18.110Z","module":"companyCareerPageConnector","action":"scan","result":"Páginas de carreira ainda não configuradas; pulando.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:24:18.135Z","module":"informalWorkHunter","action":"scan","result":"Fontes informais externas não configuradas; usando apenas e-mails/links manuais.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:24:18.136Z","module":"index","action":"scan","result":"Scan concluído: 2 vagas, 0 informais.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:25:06.825Z","module":"gmailJobAlerts","action":"scan","result":"Gmail não configurado; pulando leitura de alertas.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:25:06.829Z","module":"greenhouseConnector","action":"scan","result":"Nenhuma empresa Greenhouse configurada; pulando.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:25:06.830Z","module":"leverConnector","action":"scan","result":"Nenhuma empresa Lever configurada; pulando.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:25:06.831Z","module":"gupyConnector","action":"scan","result":"Gupy precisa de token/endpoints configurados; pulando.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:25:06.834Z","module":"rssConnector","action":"scan","result":"RSS não configurado; pulando sem erro.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:25:06.835Z","module":"companyCareerPageConnector","action":"scan","result":"Páginas de carreira ainda não configuradas; pulando.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:25:06.849Z","module":"informalWorkHunter","action":"scan","result":"Fontes informais externas não configuradas; usando apenas e-mails/links manuais.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:25:06.850Z","module":"index","action":"scan","result":"Scan concluído: 1 vagas, 0 informais.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:25:10.891Z","module":"index","action":"prepare","result":"Candidaturas preparadas: 1.","riskLevel":"baixo","metadata":{}}
+{"timestamp":"2026-06-28T18:26:16.470Z","module":"server","action":"listen","result":"Painel iniciado em http://localhost:8788","riskLevel":"baixo","metadata":{}}
