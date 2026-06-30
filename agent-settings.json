@@ -1,0 +1,267 @@
+{
+  "agent": {
+    "enabled": true,
+    "paused": false,
+    "dryRun": true,
+    "timezone": "America/Sao_Paulo",
+    "runEveryHours": 4,
+    "maxJobsPerRun": 150,
+    "dashboardPort": 8788
+  },
+  "ai": {
+    "provider": "openai",
+    "openai": { "enabled": true, "model": "CONFIGURE_IN_ENV" },
+    "gemini": { "enabled": false, "model": "CONFIGURE_IN_ENV" }
+  },
+  "profile": {
+    "name": "Giasi Mandela Silva",
+    "city": "Curitiba",
+    "state": "PR",
+    "country": "Brasil",
+    "email": "att.giasi@gmail.com",
+    "phone": "",
+    "linkedin": "",
+    "summary": "Profissional com mais de 12 anos de experiência em hospitalidade, coquetelaria, atendimento ao cliente, eventos, gestão de operação de bar, treinamento e padronização. Também possui interesse em atendimento, experiência do cliente, backoffice, prevenção à fraude e análise operacional.",
+    "education": {
+      "highestLevel": "pos_graduacao",
+      "degrees": [
+        "Administração de Empresas",
+        "Pós-graduação em Gestão de Eventos e Cerimonial Público e Privado"
+      ]
+    },
+    "driverLicense": {
+      "hasLicense": false,
+      "categories": [],
+      "hasOwnVehicle": false
+    }
+  },
+  "careerTracks": {
+    "hospitalidadePremium": true,
+    "barManagerMixologia": true,
+    "eventosCerimonial": true,
+    "atendimentoExperienciaCliente": true,
+    "sacBackoffice": true,
+    "prevencaoFraude": true,
+    "analiseOperacional": true,
+    "gestaoSupervisao": true,
+    "consultoria": true,
+    "freelancerEventos": true
+  },
+  "jobSearchPreferences": {
+    "targetRoles": [
+      "Bartender",
+      "Mixologista",
+      "Bar Manager",
+      "Chefe de Bar",
+      "Supervisor de Bar",
+      "Consultor de Bares",
+      "Coordenador de Atendimento",
+      "Supervisor de Atendimento",
+      "Analista de Atendimento",
+      "Customer Experience",
+      "Customer Success",
+      "Backoffice",
+      "Analista de Prevenção à Fraude",
+      "Analista de Operações",
+      "Analista de Risco Operacional",
+      "Eventos e Hospitalidade"
+    ],
+    "careerLevels": {
+      "operacional": true,
+      "auxiliar": false,
+      "assistente": true,
+      "tecnico": true,
+      "analista": true,
+      "especialista": true,
+      "supervisao": true,
+      "coordenacao": true,
+      "gestao": true,
+      "gerencia": true,
+      "consultoria": true,
+      "freelancerEventos": true
+    },
+    "workStyles": {
+      "presencial": true,
+      "homeOffice": true,
+      "remoto": true,
+      "hibrido": true,
+      "comViagem": true,
+      "semViagem": true,
+      "campoExterno": true,
+      "comMudancaCidade": false,
+      "semMudancaCidade": true
+    },
+    "schedulePreferences": {
+      "segundaASexta": true,
+      "escala6x1": true,
+      "finaisDeSemana": true,
+      "noturno": true,
+      "comercial": true,
+      "plantao": true,
+      "eventos": true
+    },
+    "contractTypes": {
+      "clt": true,
+      "pj": true,
+      "temporario": true,
+      "freelancer": true,
+      "contrato": true,
+      "intermitente": true,
+      "estagio": false
+    },
+    "locations": {
+      "preferred": ["Curitiba", "Região Metropolitana de Curitiba", "Remoto Brasil", "Híbrido Curitiba"],
+      "acceptedStates": ["PR"],
+      "acceptedRemoteCountries": ["Brasil"],
+      "rejectOutsidePreferredLocations": false
+    },
+    "educationFilters": {
+      "acceptEnsinoFundamental": false,
+      "acceptEnsinoMedio": true,
+      "acceptTecnico": true,
+      "acceptSuperiorCursando": true,
+      "acceptSuperiorCompleto": true,
+      "acceptPosGraduacao": true,
+      "acceptMBA": true,
+      "acceptMestrado": true,
+      "acceptDoutorado": false,
+      "minimumEducation": "ensino_medio",
+      "preferMinimumEducation": "ensino_superior",
+      "rejectOverqualifiedOnlyIfExplicit": false
+    },
+    "driverLicenseFilters": {
+      "acceptJobsRequiringLicense": true,
+      "rejectJobsRequiringLicenseIfUserHasNoLicense": true,
+      "acceptLicenseDesired": true,
+      "acceptedCategories": ["A", "B"],
+      "acceptOwnVehicleRequired": false,
+      "acceptOwnVehicleDesired": true
+    }
+  },
+  "salaryPreferences": {
+    "currency": "BRL",
+    "rejectWithoutSalary": false,
+    "penalizeWithoutSalary": true,
+    "preferSalaryInformed": true,
+    "askSalaryInDraft": true,
+    "rejectBelowMinimum": false,
+    "salaryByContractType": {
+      "clt": { "minimumMonthly": 2500, "desiredMonthly": 3500, "excellentMonthly": 5000 },
+      "pj": { "minimumMonthly": 3500, "desiredMonthly": 5000, "excellentMonthly": 7000 },
+      "freelancer": { "minimumDaily": 180, "desiredDaily": 250, "excellentDaily": 400 },
+      "eventos": { "minimumDaily": 180, "desiredDaily": 300, "excellentDaily": 500 },
+      "hourly": { "minimumHourly": 25, "desiredHourly": 40, "excellentHourly": 60 }
+    },
+    "salaryExpectation": {
+      "enabled": true,
+      "requireApprovalBeforeAnswering": true,
+      "defaultCLT": "A partir de R$ 3.500, negociável conforme pacote de benefícios e responsabilidades.",
+      "defaultPJ": "A partir de R$ 5.000, considerando escopo, carga horária e responsabilidades.",
+      "defaultFreelancer": "A partir de R$ 250 por diária, ajustável conforme duração, deslocamento e complexidade do evento."
+    }
+  },
+  "informalWork": {
+    "enabled": true,
+    "acceptFreelancer": true,
+    "acceptBicos": true,
+    "acceptTaxas": true,
+    "acceptEventos": true,
+    "acceptExtrasDeBar": true,
+    "acceptConsultorias": true,
+    "acceptTreinamentos": true,
+    "acceptTemporaryBarWork": true,
+    "acceptHospitalityEvents": true,
+    "minimumHourlyRate": 30,
+    "minimumDailyRate": 180,
+    "desiredDailyRate": 300,
+    "excellentDailyRate": 500,
+    "minimumEventRate": 250,
+    "desiredEventRate": 350,
+    "excellentEventRate": 600,
+    "rejectUnpaidWork": true,
+    "rejectBelowMinimumRate": true,
+    "rejectPaymentAfterManyDays": false,
+    "maximumPaymentDelayDays": 7,
+    "requireClearPaymentInfo": true,
+    "requireClearLocation": true,
+    "requireClearSchedule": true,
+    "penalizeNoFoodProvided": true,
+    "penalizeNoTransportProvided": true,
+    "acceptLateNight": true,
+    "acceptWeekends": true,
+    "acceptHolidays": true,
+    "maxDistanceKm": 30,
+    "requireApprovalBeforeAccepting": true,
+    "createCalendarBlockWhenApproved": true
+  },
+  "sources": {
+    "gmailAlerts": true,
+    "greenhouse": true,
+    "lever": true,
+    "gupy": true,
+    "rss": true,
+    "companyCareerPages": true,
+    "manualUrlImporter": true,
+    "companyHunter": true,
+    "linkedinEmailAlertsOnly": true,
+    "indeedEmailAlertsOnly": true,
+    "cathoEmailAlertsOnly": true,
+    "infojobsEmailAlertsOnly": true,
+    "informalWorkHunter": true
+  },
+  "strategy": {
+    "mode": "quality_over_quantity",
+    "maxApplicationsPerDay": 5,
+    "onlyPrepareAboveScore": 75,
+    "onlyApplyAboveScore": 82,
+    "prioritizePersonalizedApplications": true,
+    "avoidGenericMassApply": true,
+    "preferHighHireChance": true,
+    "preferCareerGrowth": true
+  },
+  "applications": {
+    "prepareApplications": true,
+    "createGmailDrafts": true,
+    "autoApply": false,
+    "requireApprovalBeforeApply": true,
+    "allowQuickApplyAPIs": false,
+    "allowBrowserAutofill": false,
+    "neverApplyOnLinkedInAutomatically": true,
+    "neverMassApplyWithoutApproval": true,
+    "requireApprovalBeforeSendingEmail": true
+  },
+  "platformRules": {
+    "linkedin": { "mode": "safe_manual_assist", "readEmailAlerts": true, "saveLinks": true, "prepareTexts": true, "autoApply": false, "scraping": false, "browserAutomation": false },
+    "indeed": { "mode": "email_alerts_and_manual_assist", "autoApply": false, "scraping": false },
+    "gupy": { "mode": "api_if_configured_else_manual", "autoApply": false, "quickApplyOnlyIfAllowed": true },
+    "greenhouse": { "mode": "public_api_and_allowed_application", "autoApply": false },
+    "lever": { "mode": "api_if_configured_else_manual", "autoApply": false }
+  },
+  "safety": {
+    "neverLieInApplications": true,
+    "neverInventExperience": true,
+    "neverInventEducation": true,
+    "neverInventCertifications": true,
+    "neverInventLanguages": true,
+    "neverBypassCaptcha": true,
+    "neverScrapeLinkedIn": true,
+    "neverAutomateLoggedInPlatformsWithoutExplicitPermissionAndAllowedAPI": true,
+    "requireApprovalForSensitiveQuestions": true,
+    "requireApprovalBeforeSendingEmail": true,
+    "logEveryAction": true,
+    "maskSensitiveDataInLogs": true
+  },
+  "badJobDetection": {
+    "blockedTerms": ["sem remuneração", "100% comissão", "taxa de cadastro", "curso pago obrigatório", "ganhos ilimitados", "renda extra garantida", "sem experiência e altos ganhos"],
+    "flagTerms": ["PJ com horário fixo", "disponibilidade total", "salário a combinar", "ambiente dinâmico", "alta pressão", "multitarefas"],
+    "blockedCompanies": [],
+    "blockedPlatforms": []
+  },
+  "notifications": {
+    "dailySummary": true,
+    "weeklyMarketRadar": true,
+    "createFollowUpReminders": true,
+    "followUpAfterDays": 5,
+    "interviewPrep": true
+  }
+}
