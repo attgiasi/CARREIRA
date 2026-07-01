@@ -1,0 +1,17 @@
+import fs from "node:fs";
+import path from "node:path";
+
+const vaultPath = path.resolve(process.cwd(), "data/privacy-vault.json");
+
+export function savePrivateNote(key: string, value: string): void {
+  fs.mkdirSync(path.dirname(vaultPath), { recursive: true });
+  const current = fs.existsSync(vaultPath) ? JSON.parse(fs.readFileSync(vaultPath, "utf8")) as Record<string, string> : {};
+  current[key] = value;
+  fs.writeFileSync(vaultPath, JSON.stringify(current, null, 2), "utf8");
+}
+
+export function readPrivateNote(key: string): string {
+  if (!fs.existsSync(vaultPath)) return "";
+  const current = JSON.parse(fs.readFileSync(vaultPath, "utf8")) as Record<string, string>;
+  return current[key] ?? "";
+}
