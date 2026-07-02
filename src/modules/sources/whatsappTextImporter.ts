@@ -23,7 +23,12 @@ export function importWhatsappMessages(): RawJob[] {
     return [];
   }
 
-  const chunks = fs.readFileSync(file, "utf8")
+  const content = fs.readFileSync(file, "utf8")
+    .split(/\r?\n/)
+    .filter((line) => !line.trim().startsWith("#"))
+    .join("\n");
+
+  const chunks = content
     .split(/\r?\n(?=\[?\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}|\d{1,2}:\d{2}|- )/g)
     .map((message) => message.trim())
     .filter((message) => message.length > 20 && (jobTerms.test(message) || informalTerms.test(message)));

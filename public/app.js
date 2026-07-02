@@ -68,6 +68,25 @@ function riskClass(value) {
   return "";
 }
 
+function ensureToastRoot() {
+  let root = document.querySelector("#toastRoot");
+  if (!root) {
+    root = document.createElement("div");
+    root.id = "toastRoot";
+    document.body.appendChild(root);
+  }
+  return root;
+}
+
+function toast(message, type = "info") {
+  const root = ensureToastRoot();
+  const item = document.createElement("div");
+  item.className = `toast ${type}`;
+  item.innerHTML = message;
+  root.appendChild(item);
+  window.setTimeout(() => item.remove(), 9000);
+}
+
 function shortDescription(value, max = 170) {
   const clean = String(value || "Sem descrição informada.").replace(/\s+/g, " ").trim();
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
@@ -81,15 +100,83 @@ function scoreBadge(row) {
   </div>`;
 }
 
+function applicationState(row) {
+  if (Number(row.sent_by_agent) === 1 || row.application_status === "Candidatura enviada") {
+    return { label: "Candidatado", tone: "success", detail: row.applied_at ? `Enviado em ${row.applied_at}` : "Envio registrado" };
+  }
+  if (row.application_status === "Pronta para envio assistido") {
+    return { label: "Pronta", tone: "ready", detail: "Abrir fonte oficial" };
+  }
+  if (row.application_status === "Aguardando vaga real da fonte") {
+    return { label: "Precisa vaga real", tone: "warning", detail: "Busca assistida" };
+  }
+  if (row.application_status === "Aguardando canal de candidatura") {
+    return { label: "Sem canal", tone: "warning", detail: "Confirmar link/e-mail" };
+  }
+  if (row.approval_status === "aprovado_pelo_usuario") {
+    return { label: "Aprovada", tone: "ready", detail: "Pode iniciar candidatura" };
+  }
+  if (row.application_id || row.id) {
+    return { label: "Preparada", tone: "info", detail: "Aguardando aprovação" };
+  }
+  return { label: "Não preparada", tone: "muted", detail: "Selecione para preparar" };
+}
+
+function stateChip(row) {
+  const state = applicationState(row);
+  return `<span class="state-chip ${state.tone}">${state.label}</span><small>${escapeHtml(state.detail)}</small>`;
+}
+
+function sourceBadge(source) {
+  return `<span class="source-badge">${escapeHtml(source || "Fonte")}</span>`;
+}
+
 async function dashboard() {
   const summary = await json("/api/summary");
-  app.innerHTML = `<div class="grid">
-    <div class="metric"><strong>${summary.jobs}</strong><span>vagas encontradas</span></div>
-    <div class="metric"><strong>${summary.gold}</strong><span>vagas ouro</span></div>
-    <div class="metric"><strong>${summary.applications}</strong><span>candidaturas preparadas</span></div>
-    <div class="metric"><strong>${summary.informal}</strong><span>freelas encontrados</span></div>
+  app.innerHTML = `<div class="hero-panel">
+    <div>
+      <span class="eyebrow">Radar de carreira</span>
+      <h2>Pipeline de oportunidades do Giasi</h2>
+      <p>Busca ativa, triagem por risco, materiais personalizados e candidatura assistida com controle de aprovação.</p>
+    </div>
+    <div class="hero-actions">
+      <button data-tab="jobs" class="primary">Ver vagas</button>
+      <button data-tab="applications">Ver candidaturas</button>
+    </div>
   </div>
-  <section><h2>Alertas importantes</h2><p>Dry-run e aprovação obrigatória ficam ligados por padrão. O agente prepara candidaturas, mas não envia sem autorização.</p></section>`;
+
+  <div class="grid executive-grid">
+    <div class="metric premium"><strong>${summary.jobs}</strong><span>vagas no radar</span></div>
+    <div class="metric premium"><strong>${summary.gold}</strong><span>vagas ouro</span></div>
+    <div class="metric premium"><strong>${summary.applications}</strong><span>candidaturas preparadas</span></div>
+    <div class="metric premium"><strong>${summary.approved}</strong><span>aprovadas por você</span></div>
+    <div class="metric premium"><strong>${summary.ready}</strong><span>prontas para assistência</span></div>
+    <div class="metric premium"><strong>${summary.waitingRealJob}</strong><span>precisam vaga real</span></div>
+    <div class="metric premium"><strong>${summary.sent}</strong><span>candidatadas</span></div>
+    <div class="metric premium"><strong>${summary.informal}</strong><span>freelas encontrados</span></div>
+  </div>
+
+  <div class="two-column">
+    <section>
+      <h2>Melhores oportunidades agora</h2>
+      <div class="stack-list">${(summary.topJobs || []).map((row) => `<div class="stack-item">
+        <div><strong>${escapeHtml(row.title)}</strong><small>${escapeHtml(row.company || "Empresa a confirmar")} · ${escapeHtml(row.source)}</small></div>
+        <div>${scoreBadge(row)}</div>
+      </div>`).join("") || "<p>Nenhuma vaga ranqueada ainda.</p>"}</div>
+    </section>
+    <section>
+      <h2>Fontes mais ativas</h2>
+      <div class="stack-list">${(summary.bySource || []).map((row) => `<div class="stack-item">
+        <div>${sourceBadge(row.source)}</div>
+        <strong>${row.total}</strong>
+      </div>`).join("") || "<p>Nenhuma fonte registrada.</p>"}</div>
+    </section>
+  </div>
+
+  <section class="notice-panel">
+    <h2>Status do processo</h2>
+    <p>Se uma candidatura não virar “Candidatado”, o painel agora mostra o motivo: precisa aprovação, precisa vaga real, falta canal oficial ou está pronta para formulário assistido.</p>
+  </section>`;
 }
 
 async function jobs() {
@@ -116,6 +203,7 @@ async function jobs() {
       <th>Descrição resumida</th>
       <th>Fonte</th>
       <th>Nota</th>
+      <th>Status candidatura</th>
       <th>Ação</th>
     </tr></thead>
     <tbody>${rows.map((row) => `<tr>
@@ -125,8 +213,9 @@ async function jobs() {
       <td>${escapeHtml(row.location || "A confirmar")}</td>
       <td>${escapeHtml(row.work_model || "A confirmar")}</td>
       <td>${escapeHtml(shortDescription(row.description))}</td>
-      <td>${escapeHtml(row.source || "-")}</td>
+      <td>${sourceBadge(row.source)}</td>
       <td>${scoreBadge(row)}</td>
+      <td>${stateChip(row)}</td>
       <td><button data-detail="${row.id}">Detalhes</button>${row.url ? `<a class="action" href="${row.url}" target="_blank" rel="noreferrer">Abrir fonte</a>` : ""}</td>
     </tr>`).join("")}</tbody></table>
   </section>`;
@@ -145,7 +234,10 @@ async function jobs() {
     const response = await fetch("/api/jobs/prepare-selected", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
     const data = await response.json();
     const skipped = (data.skipped || []).map((item) => `<li>#${item.id}: ${escapeHtml(item.reason)}</li>`).join("");
-    showResult(response.ok ? `${data.prepared} candidatura(s) preparada(s). ${skipped ? `<ul>${skipped}</ul>` : ""}<p>Agora vá para a aba <strong>Candidaturas</strong> para aprovar e clicar em <strong>Candidatar-se com IA</strong>.</p>` : escapeHtml(data.error || "Erro ao preparar."));
+    const message = response.ok ? `<strong>${data.prepared} candidatura(s) preparada(s).</strong> ${skipped ? `<ul>${skipped}</ul>` : ""}<p>Agora vá para a aba <strong>Candidaturas</strong>, aprove e clique em <strong>Candidatar-se com IA</strong>.</p>` : escapeHtml(data.error || "Erro ao preparar.");
+    showResult(message);
+    toast(message, response.ok ? "success" : "error");
+    await jobs();
   };
 }
 
@@ -190,15 +282,23 @@ async function jobDetail(id) {
 
 async function informal() {
   const rows = await json("/api/informal");
-  app.innerHTML = `<table><thead><tr><th>Score</th><th>Tipo</th><th>Contratante</th><th>Local</th><th>Horário</th><th>Taxa</th><th>Hora</th><th>Risco</th><th>Status</th></tr></thead>
+  app.innerHTML = `<section>
+    <div class="toolbar">
+      <div>
+        <h2>Freelas e bicos</h2>
+        <p>Eventos, taxas e oportunidades informais com cálculo de valor/hora e risco.</p>
+      </div>
+    </div>
+    <table class="data-table"><thead><tr><th>Score</th><th>Tipo</th><th>Contratante</th><th>Local</th><th>Horário</th><th>Taxa</th><th>Hora</th><th>Risco</th><th>Status</th></tr></thead>
   <tbody>${rows.map((row) => `<tr>
     <td>${row.freela_score}</td><td>${row.title}</td><td>${row.contractor_name}</td><td>${row.location}</td>
     <td>${row.start_time || "-"} - ${row.end_time || "-"}</td><td>R$ ${row.total_pay || 0}</td><td>R$ ${row.hourly_rate || 0}</td>
     <td class="${riskClass(row.risk_score)}">${row.risk_score}<br><small>${row.risk_flags || ""}</small></td><td>${row.status}</td>
-  </tr>`).join("")}</tbody></table>`;
+  </tr>`).join("")}</tbody></table>
+  </section>`;
 }
 
-async function applications() {
+async function applications(initialMessage = "") {
   const rows = await json("/api/applications");
   app.innerHTML = `<section>
     <div class="toolbar">
@@ -214,7 +314,7 @@ async function applications() {
         <button id="rejectApplications">Rejeitar</button>
       </div>
     </div>
-    <div id="applicationActionResult" class="note hidden"></div>
+    <div id="applicationActionResult" class="note ${initialMessage ? "" : "hidden"}">${initialMessage}</div>
     <table class="data-table"><thead><tr>
       <th></th>
       <th>Nome da vaga</th>
@@ -235,9 +335,9 @@ async function applications() {
       <td>${escapeHtml(row.location || "A confirmar")}</td>
       <td>${escapeHtml(row.work_model || "A confirmar")}</td>
       <td>${escapeHtml(shortDescription(row.description))}</td>
-      <td>${escapeHtml(row.source || "-")}<br><small>${row.url ? "tem link" : "sem link"}</small></td>
+      <td>${sourceBadge(row.source)}<br><small>${row.url ? "tem link" : "sem link"}</small></td>
       <td>${scoreBadge(row)}</td>
-      <td><strong>${escapeHtml(row.application_status || "-")}</strong><br><small>${escapeHtml(row.approval_status || "-")}</small></td>
+      <td>${stateChip(row)}<br><small>${escapeHtml(row.application_status || "-")}</small></td>
       <td><small>CV: ${escapeHtml(row.generated_resume_path || "")}</small><br><small>Carta: ${escapeHtml(row.cover_letter_path || "")}</small></td>
       <td>${row.url ? `<a class="action" href="${row.url}" target="_blank" rel="noreferrer">Abrir fonte</a>` : ""}${row.job_id ? `<button data-detail="${row.job_id}">Detalhes</button>` : ""}</td>
     </tr>`).join("")}</tbody></table>
@@ -256,25 +356,28 @@ async function applications() {
     if (!ids.length) return showResult("Selecione pelo menos uma candidatura.");
     const response = await fetch("/api/applications/approve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
     const data = await response.json();
-    showResult(response.ok ? `${data.approved} candidatura(s) aprovada(s).` : escapeHtml(data.error || "Erro ao aprovar."));
-    await applications();
+    const message = response.ok ? `<strong>${data.approved} candidatura(s) aprovada(s).</strong> Agora clique em <strong>Candidatar-se com IA</strong>.` : escapeHtml(data.error || "Erro ao aprovar.");
+    toast(message, response.ok ? "success" : "error");
+    await applications(message);
   };
   document.querySelector("#rejectApplications").onclick = async () => {
     const ids = selectedIds();
     if (!ids.length) return showResult("Selecione pelo menos uma candidatura.");
     const response = await fetch("/api/applications/reject", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
     const data = await response.json();
-    showResult(response.ok ? `${data.rejected} candidatura(s) rejeitada(s).` : escapeHtml(data.error || "Erro ao rejeitar."));
-    await applications();
+    const message = response.ok ? `<strong>${data.rejected} candidatura(s) rejeitada(s).</strong>` : escapeHtml(data.error || "Erro ao rejeitar.");
+    toast(message, response.ok ? "success" : "error");
+    await applications(message);
   };
   document.querySelector("#assistedApplyApplications").onclick = async () => {
     const ids = selectedIds();
     if (!ids.length) return showResult("Selecione pelo menos uma candidatura aprovada.");
     const response = await fetch("/api/applications/assisted-apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
     const data = await response.json();
-    const lines = (data.actions || []).map((action) => `<li><strong>#${action.id}</strong>: ${escapeHtml(action.message)} ${action.url ? `<a href="${action.url}" target="_blank" rel="noreferrer">abrir</a>` : ""}</li>`).join("");
-    showResult(response.ok ? `<ul>${lines}</ul>` : escapeHtml(data.error || "Erro na candidatura assistida."));
-    await applications();
+    const lines = (data.actions || []).map((action) => `<li><strong>#${action.id}</strong> <span class="state-chip ${action.status === "pronta_para_formulario" ? "ready" : action.status === "bloqueada" ? "warning" : "info"}">${escapeHtml(action.status)}</span>: ${escapeHtml(action.message)}<br><small>${escapeHtml(action.nextStep || "")}</small> ${action.url ? `<a href="${action.url}" target="_blank" rel="noreferrer">abrir fonte</a>` : ""}</li>`).join("");
+    const message = response.ok ? `<strong>Resultado da candidatura assistida</strong><ul>${lines}</ul>` : escapeHtml(data.error || "Erro na candidatura assistida.");
+    toast(response.ok ? "Candidatura assistida processada. Veja os detalhes no painel." : message, response.ok ? "info" : "error");
+    await applications(message);
   };
 }
 
@@ -456,7 +559,15 @@ async function settings() {
 }
 
 async function logs() {
-  app.innerHTML = `<section><h2>Logs</h2><p>Veja os arquivos locais <code>logs/audit.jsonl</code> e <code>logs/errors.jsonl</code>. Tokens e dados pessoais são mascarados.</p></section>`;
+  app.innerHTML = `<section class="notice-panel">
+    <h2>Logs e auditoria</h2>
+    <p>Veja os arquivos locais <code>logs/audit.jsonl</code> e <code>logs/errors.jsonl</code>. Tokens e dados pessoais são mascarados.</p>
+    <div class="grid">
+      <div class="metric premium"><strong>JSONL</strong><span>auditoria de ações</span></div>
+      <div class="metric premium"><strong>Seguro</strong><span>PII mascarada</span></div>
+      <div class="metric premium"><strong>Local</strong><span>dados no seu computador</span></div>
+    </div>
+  </section>`;
 }
 
 async function load(tab) {

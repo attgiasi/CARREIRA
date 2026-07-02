@@ -7,6 +7,8 @@ import { scoreHireChance } from "./hireChanceScorer.js";
 import { scoreJobQuality } from "./jobQualityScorer.js";
 import { classifyJob } from "./jobClassifier.js";
 
+const assistedSources = new Set(["google-assisted-search", "sine", "infojobs", "jobs99", "rh-agencies-curitiba"]);
+
 function detectCareerTrack(text: string): string {
   const lower = text.toLowerCase();
   if (/fraude|risco|backoffice/.test(lower)) return "prevencao_backoffice";
@@ -71,5 +73,14 @@ export function normalizeJob(raw: RawJob, settings: AgentSettings): NormalizedJo
   job.hireChanceReason = hire.reason;
   job.jobQualityScore = scoreJobQuality(job);
   job.status = classifyJob(job);
+  if (assistedSources.has(job.source)) {
+    job.fitScore = Math.min(job.fitScore, 62);
+    job.hireChanceScore = Math.min(job.hireChanceScore, 45);
+    job.jobQualityScore = Math.min(job.jobQualityScore, 42);
+    job.riskScore = Math.max(job.riskScore, 25);
+    job.status = "Busca Assistida";
+    job.fitReason = "Fonte útil para encontrar vagas reais, mas esta entrada ainda é uma busca ou portal. Abra a fonte e importe o link específico da vaga.";
+    job.hireChanceReason = "Chance real só pode ser calculada depois de identificar a vaga específica, empresa, requisitos e formulário oficial.";
+  }
   return job;
 }

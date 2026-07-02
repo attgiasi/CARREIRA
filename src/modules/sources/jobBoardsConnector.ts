@@ -24,7 +24,7 @@ const boardConfig: Record<Board, { label: string; domain: string; baseUrl: strin
 
 export function fetchJobBoardSearches(settings: AgentSettings, board: Board): RawJob[] {
   const config = boardConfig[board];
-  const pairs = limitedSearchPairs(settings, 10);
+  const pairs = limitedSearchPairs(settings, 18);
   const results = pairs.map(({ role, location }) => {
     const query = `site:(${config.domain}) "${role}" "${location}" vaga emprego`;
     return {

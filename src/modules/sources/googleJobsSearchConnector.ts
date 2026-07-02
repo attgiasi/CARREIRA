@@ -11,15 +11,28 @@ interface GoogleSearchItem {
 }
 
 function buildQueries(settings: AgentSettings): string[] {
-  const base = limitedSearchPairs(settings, 14).map(({ role, location }) => `"${role}" vaga emprego "${location}"`);
+  const pairs = limitedSearchPairs(settings, 24);
+  const base = pairs.flatMap(({ role, location }) => [
+    `"${role}" vaga emprego "${location}"`,
+    `"${role}" "${location}" "candidatar"`,
+    `"${role}" "${location}" "trabalhe conosco"`,
+    `"${role}" "${location}" "processo seletivo"`
+  ]);
+  const platformFocused = pairs.slice(0, 10).flatMap(({ role, location }) => [
+    `site:gupy.io "${role}" "${location}"`,
+    `site:solides.jobs "${role}" "${location}"`,
+    `site:infojobs.com.br "${role}" "${location}"`,
+    `site:99jobs.com "${role}" "${location}"`
+  ]);
   return [
     ...base,
+    ...platformFocused,
     `"SINE" vagas "${settings.profile.city}" "${settings.profile.state}"`,
     `"agência de emprego" vagas "${settings.profile.city}" "${settings.profile.state}"`,
     `"recrutamento e seleção" vagas "${settings.profile.city}" "${settings.profile.state}"`,
     `"bartender" "Curitiba" "vagas"`,
     `"atendimento" "Curitiba" "vagas"`
-  ];
+  ].slice(0, 90);
 }
 
 async function searchGoogle(query: string): Promise<RawJob[]> {
@@ -47,7 +60,7 @@ export async function fetchGoogleJobsSearch(settings: AgentSettings): Promise<Ra
   const queries = buildQueries(settings);
   if (!hasGoogleSearchSecrets()) {
     audit("googleJobsSearchConnector", "scan", "Google Programmable Search não configurado; criando buscas assistidas.");
-    return queries.map((query) => ({
+    return queries.slice(0, 45).map((query) => ({
       externalId: `google-assisted-${query}`,
       title: `Busca Google: ${query}`,
       company: "Google",
@@ -60,7 +73,7 @@ export async function fetchGoogleJobsSearch(settings: AgentSettings): Promise<Ra
   }
 
   try {
-    const batches = await Promise.all(queries.slice(0, 10).map(searchGoogle));
+    const batches = await Promise.all(queries.slice(0, 20).map(searchGoogle));
     const jobs = batches.flat();
     audit("googleJobsSearchConnector", "scan", `Resultados Google importados: ${jobs.length}.`);
     return jobs;
