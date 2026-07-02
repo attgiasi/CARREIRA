@@ -91,6 +91,8 @@ async function jobs() {
 }
 
 function applicationGuidance(row) {
+  if (row.source === "google-assisted-search") return "Abra a busca do Google, escolha a vaga real na página de resultados e importe o link específico em data/manual-urls.txt para o agente analisar em detalhe.";
+  if (["sine", "infojobs", "jobs99", "rh-agencies-curitiba"].includes(row.source)) return "Esta é uma busca assistida em fonte de vagas. Abra o link, escolha uma vaga real, confirme empresa/salário/local e importe o link específico se quiser gerar candidatura personalizada.";
   if (row.url) return `Abra o link oficial da fonte (${row.source}) e revise os dados antes de se candidatar. O agente pode preparar currículo/carta, mas o envio depende de aprovação.`;
   if (row.source === "companyHunter") return "Sem link porque é uma prospecção ativa. O próximo passo é pesquisar contatos da empresa-alvo, página Trabalhe Conosco ou e-mail de RH/comercial.";
   if (String(row.source).includes("whatsapp")) return "Sem link no WhatsApp. Peça detalhes por mensagem: empresa, local, horário, remuneração, função, contato responsável e forma oficial de candidatura.";

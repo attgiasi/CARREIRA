@@ -1,0 +1,56 @@
+[
+  {
+    "name": "RH Center",
+    "website": "https://www.rhcenter.com.br/pesquisar-vagas",
+    "sector": "Recrutamento, seleção e temporários",
+    "city": "Curitiba",
+    "state": "PR",
+    "targetCategory": "agencia_rh",
+    "notes": "Fonte pública de vagas em Curitiba e Região Metropolitana."
+  },
+  {
+    "name": "RH Curitiba",
+    "website": "https://www.curitibarh.com.br/",
+    "sector": "Recrutamento e seleção",
+    "city": "Curitiba",
+    "state": "PR",
+    "targetCategory": "agencia_rh",
+    "notes": "Consultoria de RH em Curitiba; candidatos enviam currículo conforme vaga."
+  },
+  {
+    "name": "RH Nossa",
+    "website": "https://www.rhnossa.com.br/",
+    "sector": "Emprego e terceirização",
+    "city": "Curitiba",
+    "state": "PR",
+    "targetCategory": "agencia_rh",
+    "notes": "Empresa de RH com atuação em Curitiba e região."
+  },
+  {
+    "name": "SE Recursos Humanos",
+    "website": "https://serecursoshumanos.com.br/vagas-em-curitiba/",
+    "sector": "Recrutamento e seleção",
+    "city": "Curitiba",
+    "state": "PR",
+    "targetCategory": "agencia_rh",
+    "notes": "Página pública de vagas em Curitiba."
+  },
+  {
+    "name": "Imediatta RH",
+    "website": "https://imediattarh.com.br/",
+    "sector": "Recursos humanos e terceirização",
+    "city": "Curitiba",
+    "state": "PR",
+    "targetCategory": "agencia_rh",
+    "notes": "Atuação em Curitiba e outras cidades."
+  },
+  {
+    "name": "Emprega Curitiba / SINE Municipal",
+    "website": "https://emprega.curitiba.pr.gov.br/",
+    "sector": "Portal público de empregos",
+    "city": "Curitiba",
+    "state": "PR",
+    "targetCategory": "sine_publico",
+    "notes": "Portal oficial da Prefeitura de Curitiba para oportunidades de trabalho."
+  }
+]

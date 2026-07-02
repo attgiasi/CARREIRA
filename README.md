@@ -10,6 +10,7 @@ O objetivo não é sair se candidatando em massa. O agente funciona como assiste
 - Importa links manuais em `data/manual-urls.txt`.
 - Importa mensagens copiadas/exportadas de grupos do WhatsApp em `data/whatsapp-vagas.txt`.
 - Mantém conectores preparados para Greenhouse, Lever, Gupy, RSS e páginas de carreira.
+- Cria buscas direcionadas no Google, SINE/Emprega Curitiba, InfoJobs, 99jobs e agências de RH em Curitiba.
 - Normaliza vagas em um formato único.
 - Detecta modelo de trabalho, viagem, CNH, veículo próprio, escolaridade, senioridade, salário e trilha de carreira.
 - Calcula `Fit Score`, `Hire Chance Score`, `Job Quality Score` e `Risk Score`.
@@ -119,6 +120,28 @@ GEMINI_API_KEY=
 ```
 
 Mesmo sem IA externa, o projeto roda com regras determinísticas.
+
+## Google, SINE, InfoJobs, 99jobs e agências de RH
+
+O agente cria buscas direcionadas usando seus cargos e localidades configuradas. Sem chave do Google, ele gera links prontos para abrir no painel. Com Google Programmable Search configurado, ele importa resultados automaticamente.
+
+Para ativar importação automática via Google Programmable Search:
+
+```env
+GOOGLE_SEARCH_API_KEY=
+GOOGLE_SEARCH_ENGINE_ID=
+```
+
+Fontes incluídas:
+
+- Google Search assistido;
+- SINE / Emprega Curitiba;
+- InfoJobs;
+- 99jobs;
+- agências de RH em Curitiba;
+- páginas diretas cadastradas em `data/rh-agencies-curitiba.json`.
+
+O agente não faz scraping agressivo dessas plataformas. Quando o resultado for uma busca assistida, abra o link, escolha a vaga real e cole o link específico em `data/manual-urls.txt` para análise detalhada.
 
 ## Currículos
 

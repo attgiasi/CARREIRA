@@ -9,6 +9,9 @@ import { fetchRssJobs } from "./modules/sources/rssConnector.js";
 import { fetchCompanyCareerPages } from "./modules/sources/companyCareerPageConnector.js";
 import { importManualUrls } from "./modules/sources/manualUrlImporter.js";
 import { importWhatsappMessages } from "./modules/sources/whatsappTextImporter.js";
+import { fetchGoogleJobsSearch } from "./modules/sources/googleJobsSearchConnector.js";
+import { fetchJobBoardSearches } from "./modules/sources/jobBoardsConnector.js";
+import { fetchRhAgencySearches } from "./modules/sources/rhAgenciesConnector.js";
 import { seedTargetCompanyOpportunities } from "./modules/sources/companyHunter.js";
 import { findInformalWork } from "./modules/informal/informalWorkHunter.js";
 import { normalizeInformal } from "./modules/informal/informalOpportunityNormalizer.js";
@@ -32,6 +35,11 @@ async function collectRawJobs(): Promise<RawJob[]> {
     settings.sources.companyCareerPages ? fetchCompanyCareerPages() : [],
     Promise.resolve(settings.sources.manualUrlImporter ? importManualUrls() : []),
     Promise.resolve(importWhatsappMessages()),
+    settings.sources.googleJobsSearch ? fetchGoogleJobsSearch(settings) : [],
+    Promise.resolve(settings.sources.sine ? fetchJobBoardSearches(settings, "sine") : []),
+    Promise.resolve(settings.sources.infojobs ? fetchJobBoardSearches(settings, "infojobs") : []),
+    Promise.resolve(settings.sources.jobs99 ? fetchJobBoardSearches(settings, "jobs99") : []),
+    Promise.resolve(settings.sources.rhAgenciesCuritiba ? fetchRhAgencySearches(settings) : []),
     Promise.resolve(settings.sources.companyHunter ? seedTargetCompanyOpportunities() : [])
   ]);
   return batches.flat().slice(0, settings.agent.maxJobsPerRun);
