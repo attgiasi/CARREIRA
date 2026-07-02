@@ -8,6 +8,7 @@ O objetivo não é sair se candidatando em massa. O agente funciona como assiste
 
 - Lê alertas de vagas do Gmail quando a API estiver configurada.
 - Importa links manuais em `data/manual-urls.txt`.
+- Importa mensagens copiadas/exportadas de grupos do WhatsApp em `data/whatsapp-vagas.txt`.
 - Mantém conectores preparados para Greenhouse, Lever, Gupy, RSS e páginas de carreira.
 - Normaliza vagas em um formato único.
 - Detecta modelo de trabalho, viagem, CNH, veículo próprio, escolaridade, senioridade, salário e trilha de carreira.
@@ -151,11 +152,23 @@ npm run lint
 1. Configure `.env`.
 2. Ajuste `agent-settings.json`.
 3. Adicione links manuais em `data/manual-urls.txt`.
-4. Rode `npm run scan`.
-5. Rode `npm run prepare`.
-6. Abra `npm run dashboard`.
-7. Revise vagas, riscos, cartas e currículos gerados.
-8. Aprove manualmente antes de enviar qualquer candidatura.
+4. Cole mensagens de grupos de vagas em `data/whatsapp-vagas.txt`, se quiser monitorar WhatsApp de forma segura.
+5. Rode `npm run scan`.
+6. Rode `npm run prepare`.
+7. Abra `npm run dashboard`.
+8. Revise vagas, fontes, riscos, cartas e currículos gerados.
+9. Aprove manualmente antes de enviar qualquer candidatura.
+
+## WhatsApp
+
+O agente não entra automaticamente na sua conta do WhatsApp e não monitora grupos por WhatsApp Web. Isso evita risco de bloqueio, exposição de conta e automação indevida.
+
+Use o caminho seguro:
+
+1. Copie mensagens de grupos de vagas ou exporte a conversa.
+2. Cole em `data/whatsapp-vagas.txt`.
+3. Rode `npm run scan`.
+4. Veja as oportunidades no painel, com fonte `whatsapp` ou `whatsapp-informal`.
 
 ## Freelas, taxas e bicos
 

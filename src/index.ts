@@ -8,6 +8,7 @@ import { fetchGupyJobs } from "./modules/sources/gupyConnector.js";
 import { fetchRssJobs } from "./modules/sources/rssConnector.js";
 import { fetchCompanyCareerPages } from "./modules/sources/companyCareerPageConnector.js";
 import { importManualUrls } from "./modules/sources/manualUrlImporter.js";
+import { importWhatsappMessages } from "./modules/sources/whatsappTextImporter.js";
 import { seedTargetCompanyOpportunities } from "./modules/sources/companyHunter.js";
 import { findInformalWork } from "./modules/informal/informalWorkHunter.js";
 import { normalizeInformal } from "./modules/informal/informalOpportunityNormalizer.js";
@@ -30,6 +31,7 @@ async function collectRawJobs(): Promise<RawJob[]> {
     settings.sources.rss ? fetchRssJobs() : [],
     settings.sources.companyCareerPages ? fetchCompanyCareerPages() : [],
     Promise.resolve(settings.sources.manualUrlImporter ? importManualUrls() : []),
+    Promise.resolve(importWhatsappMessages()),
     Promise.resolve(settings.sources.companyHunter ? seedTargetCompanyOpportunities() : [])
   ]);
   return batches.flat().slice(0, settings.agent.maxJobsPerRun);

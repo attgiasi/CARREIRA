@@ -1,0 +1,3 @@
+# Cole aqui mensagens exportadas ou copiadas de grupos de vagas do WhatsApp.
+# O agente lê este arquivo no npm run scan.
+# Não cole documentos pessoais, senhas, códigos de autenticação ou dados sensíveis.
