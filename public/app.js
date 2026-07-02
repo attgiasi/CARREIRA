@@ -141,8 +141,66 @@ async function informal() {
 
 async function applications() {
   const rows = await json("/api/applications");
-  app.innerHTML = `<table><thead><tr><th>ID</th><th>Vaga</th><th>Status</th><th>Aprovação</th><th>CV</th><th>Carta</th></tr></thead>
-  <tbody>${rows.map((row) => `<tr><td>${row.id}</td><td>${row.job_id || "-"}</td><td>${row.application_status}</td><td>${row.approval_status}</td><td>${row.generated_resume_path || ""}</td><td>${row.cover_letter_path || ""}</td></tr>`).join("")}</tbody></table>`;
+  app.innerHTML = `<section>
+    <div class="toolbar">
+      <div>
+        <h2>Candidaturas</h2>
+        <p>Selecione as candidaturas que você quer aprovar. O agente só avança com as aprovadas.</p>
+      </div>
+      <div class="toolbar-actions">
+        <button id="selectAllApplications">Selecionar todas</button>
+        <button id="clearApplications">Limpar seleção</button>
+        <button id="approveApplications" class="primary">Aprovar selecionadas</button>
+        <button id="assistedApplyApplications">Candidatar aprovadas</button>
+        <button id="rejectApplications">Rejeitar</button>
+      </div>
+    </div>
+    <div id="applicationActionResult" class="note hidden"></div>
+    <table><thead><tr><th></th><th>Vaga</th><th>Fonte</th><th>Notas</th><th>Status</th><th>Materiais</th><th>Ação</th></tr></thead>
+    <tbody>${rows.map((row) => `<tr>
+      <td><input class="application-check" type="checkbox" value="${row.id}"></td>
+      <td><strong>${escapeHtml(row.title || `Vaga ${row.job_id || ""}`)}</strong><br><small>${escapeHtml(row.company || "Empresa a confirmar")}</small></td>
+      <td>${escapeHtml(row.source || "-")}<br><small>${row.url ? "tem link" : "sem link"}</small></td>
+      <td>Fit ${row.fit_score ?? "-"}<br><span class="${riskClass(row.risk_score)}">Risco ${row.risk_score ?? "-"}</span></td>
+      <td><strong>${escapeHtml(row.application_status || "-")}</strong><br><small>${escapeHtml(row.approval_status || "-")}</small></td>
+      <td><small>CV: ${escapeHtml(row.generated_resume_path || "")}</small><br><small>Carta: ${escapeHtml(row.cover_letter_path || "")}</small></td>
+      <td>${row.url ? `<a class="action" href="${row.url}" target="_blank" rel="noreferrer">Abrir fonte</a>` : ""}${row.job_id ? `<button data-detail="${row.job_id}">Detalhes</button>` : ""}</td>
+    </tr>`).join("")}</tbody></table>
+  </section>`;
+
+  const selectedIds = () => [...document.querySelectorAll(".application-check:checked")].map((input) => Number(input.value));
+  const resultBox = document.querySelector("#applicationActionResult");
+  const showResult = (message) => {
+    resultBox.classList.remove("hidden");
+    resultBox.innerHTML = message;
+  };
+  document.querySelector("#selectAllApplications").onclick = () => document.querySelectorAll(".application-check").forEach((input) => input.checked = true);
+  document.querySelector("#clearApplications").onclick = () => document.querySelectorAll(".application-check").forEach((input) => input.checked = false);
+  document.querySelector("#approveApplications").onclick = async () => {
+    const ids = selectedIds();
+    if (!ids.length) return showResult("Selecione pelo menos uma candidatura.");
+    const response = await fetch("/api/applications/approve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+    const data = await response.json();
+    showResult(response.ok ? `${data.approved} candidatura(s) aprovada(s).` : escapeHtml(data.error || "Erro ao aprovar."));
+    await applications();
+  };
+  document.querySelector("#rejectApplications").onclick = async () => {
+    const ids = selectedIds();
+    if (!ids.length) return showResult("Selecione pelo menos uma candidatura.");
+    const response = await fetch("/api/applications/reject", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+    const data = await response.json();
+    showResult(response.ok ? `${data.rejected} candidatura(s) rejeitada(s).` : escapeHtml(data.error || "Erro ao rejeitar."));
+    await applications();
+  };
+  document.querySelector("#assistedApplyApplications").onclick = async () => {
+    const ids = selectedIds();
+    if (!ids.length) return showResult("Selecione pelo menos uma candidatura aprovada.");
+    const response = await fetch("/api/applications/assisted-apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+    const data = await response.json();
+    const lines = (data.actions || []).map((action) => `<li><strong>#${action.id}</strong>: ${escapeHtml(action.message)} ${action.url ? `<a href="${action.url}" target="_blank" rel="noreferrer">abrir</a>` : ""}</li>`).join("");
+    showResult(response.ok ? `<ul>${lines}</ul>` : escapeHtml(data.error || "Erro na candidatura assistida."));
+    await applications();
+  };
 }
 
 async function settings() {

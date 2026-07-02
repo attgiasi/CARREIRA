@@ -37,7 +37,103 @@ apiRouter.get("/informal", async (_req, res) => {
 
 apiRouter.get("/applications", async (_req, res) => {
   const db = await CareerDatabase.open();
-  res.json(db.query("SELECT * FROM applications ORDER BY id DESC LIMIT 300"));
+  res.json(db.query(`
+    SELECT
+      a.*,
+      j.title,
+      j.company,
+      j.source,
+      j.url,
+      j.fit_score,
+      j.risk_score,
+      j.status as job_status
+    FROM applications a
+    LEFT JOIN jobs j ON j.id = a.job_id
+    ORDER BY a.id DESC
+    LIMIT 300
+  `));
+});
+
+apiRouter.post("/applications/approve", async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+  if (!ids.length) {
+    res.status(400).json({ error: "Nenhuma candidatura selecionada." });
+    return;
+  }
+  const db = await CareerDatabase.open();
+  for (const id of ids) {
+    db.run(
+      "UPDATE applications SET approval_status = ?, application_status = ?, notes = COALESCE(notes, '') || ? WHERE id = ?",
+      ["aprovado_pelo_usuario", "Aprovada pelo usuário", `\nAprovada no painel em ${new Date().toISOString()}.`, id]
+    );
+  }
+  res.json({ ok: true, approved: ids.length });
+});
+
+apiRouter.post("/applications/reject", async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+  if (!ids.length) {
+    res.status(400).json({ error: "Nenhuma candidatura selecionada." });
+    return;
+  }
+  const db = await CareerDatabase.open();
+  for (const id of ids) {
+    db.run(
+      "UPDATE applications SET approval_status = ?, application_status = ?, notes = COALESCE(notes, '') || ? WHERE id = ?",
+      ["rejeitado_pelo_usuario", "Rejeitada", `\nRejeitada no painel em ${new Date().toISOString()}.`, id]
+    );
+  }
+  res.json({ ok: true, rejected: ids.length });
+});
+
+apiRouter.post("/applications/assisted-apply", async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+  if (!ids.length) {
+    res.status(400).json({ error: "Nenhuma candidatura selecionada." });
+    return;
+  }
+  const db = await CareerDatabase.open();
+  const actions: Array<{ id: number; status: string; message: string; url?: string }> = [];
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = db.query<Record<string, unknown>>(`
+    SELECT a.*, j.title, j.company, j.source, j.url
+    FROM applications a
+    LEFT JOIN jobs j ON j.id = a.job_id
+    WHERE a.id IN (${placeholders})
+  `, ids);
+
+  for (const row of rows) {
+    const id = Number(row.id);
+    const approval = String(row.approval_status ?? "");
+    const source = String(row.source ?? "");
+    const url = String(row.url ?? "");
+    if (approval !== "aprovado_pelo_usuario") {
+      actions.push({ id, status: "bloqueada", message: "A candidatura precisa ser aprovada antes." });
+      continue;
+    }
+    if (["google-assisted-search", "sine", "infojobs", "jobs99", "rh-agencies-curitiba"].includes(source)) {
+      db.run(
+        "UPDATE applications SET application_status = ?, notes = COALESCE(notes, '') || ? WHERE id = ?",
+        ["Aguardando vaga real da fonte", `\nFonte assistida: abrir o link, escolher vaga real e importar o link específico.`, id]
+      );
+      actions.push({ id, status: "assistida", message: "Abra a fonte, escolha a vaga real e importe o link específico antes do envio.", url });
+      continue;
+    }
+    if (!url) {
+      db.run(
+        "UPDATE applications SET application_status = ?, notes = COALESCE(notes, '') || ? WHERE id = ?",
+        ["Aguardando canal de candidatura", `\nSem URL/canal oficial para envio automático seguro.`, id]
+      );
+      actions.push({ id, status: "pendente", message: "Sem link ou e-mail oficial. Confirmar canal de candidatura." });
+      continue;
+    }
+    db.run(
+      "UPDATE applications SET application_status = ?, notes = COALESCE(notes, '') || ? WHERE id = ?",
+      ["Pronta para envio assistido", `\nAprovada para candidatura assistida. Abrir fonte oficial: ${url}`, id]
+    );
+    actions.push({ id, status: "pronta", message: "Pronta para candidatura assistida na fonte oficial.", url });
+  }
+  res.json({ ok: true, actions });
 });
 
 apiRouter.get("/settings", (_req, res) => res.json(loadSettings()));

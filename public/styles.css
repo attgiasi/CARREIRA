@@ -206,6 +206,33 @@ pre {
   border-radius: 8px;
   padding: 12px;
 }
+.hidden { display: none; }
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.toolbar h2,
+.toolbar p {
+  margin: 0;
+}
+.toolbar p {
+  color: var(--muted);
+  margin-top: 4px;
+}
+.toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.application-check {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
 .code-output {
   min-height: 420px;
   font: 13px ui-monospace, SFMono-Regular, Consolas, monospace;
@@ -224,5 +251,11 @@ pre {
   }
   .settings-head {
     display: grid;
+  }
+  .toolbar {
+    display: grid;
+  }
+  .toolbar-actions {
+    justify-content: flex-start;
   }
 }
