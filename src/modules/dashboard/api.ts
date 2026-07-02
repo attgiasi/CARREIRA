@@ -1,4 +1,6 @@
 import { Router } from "express";
+import fs from "node:fs";
+import path from "node:path";
 import { CareerDatabase } from "../../database/db.js";
 import { loadSettings, saveSettings } from "../../config/settings.js";
 
@@ -18,6 +20,16 @@ apiRouter.get("/jobs", async (_req, res) => {
   res.json(db.query("SELECT * FROM jobs ORDER BY fit_score DESC, risk_score ASC LIMIT 300"));
 });
 
+apiRouter.get("/jobs/:id", async (req, res) => {
+  const db = await CareerDatabase.open();
+  const job = db.query("SELECT * FROM jobs WHERE id = ? LIMIT 1", [Number(req.params.id)])[0];
+  if (!job) {
+    res.status(404).json({ error: "Vaga não encontrada" });
+    return;
+  }
+  res.json(job);
+});
+
 apiRouter.get("/informal", async (_req, res) => {
   const db = await CareerDatabase.open();
   res.json(db.query("SELECT * FROM informal_opportunities ORDER BY freela_score DESC, risk_score ASC LIMIT 300"));
@@ -32,4 +44,12 @@ apiRouter.get("/settings", (_req, res) => res.json(loadSettings()));
 apiRouter.post("/settings", (req, res) => {
   saveSettings(req.body);
   res.json({ ok: true });
+});
+
+apiRouter.get("/resumes", (_req, res) => {
+  const folder = path.resolve(process.cwd(), "resumes");
+  const files = fs.existsSync(folder)
+    ? fs.readdirSync(folder).filter((file) => /\.(pdf|docx?|md)$/i.test(file))
+    : [];
+  res.json({ files });
 });

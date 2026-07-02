@@ -15,6 +15,53 @@ async function json(url) {
   return response.json();
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+}
+
+function getPath(obj, path, fallback = "") {
+  return path.split(".").reduce((acc, part) => acc && acc[part] !== undefined ? acc[part] : undefined, obj) ?? fallback;
+}
+
+function setPath(obj, path, value) {
+  const parts = path.split(".");
+  let target = obj;
+  for (const part of parts.slice(0, -1)) {
+    target[part] = target[part] ?? {};
+    target = target[part];
+  }
+  target[parts.at(-1)] = value;
+}
+
+function checkboxGrid(title, group, values) {
+  return `<div class="field-block"><label>${title}</label><div class="choice-grid">${Object.entries(values || {}).map(([key, value]) => `
+    <label class="check-pill"><input type="checkbox" data-path="${group}.${key}" ${value ? "checked" : ""}> <span>${labelize(key)}</span></label>
+  `).join("")}</div></div>`;
+}
+
+function labelize(key) {
+  return key
+    .replace(/([A-Z])/g, " $1")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace("Cnh", "CNH")
+    .replace("Pj", "PJ")
+    .replace("Clt", "CLT")
+    .replace("Sac", "SAC");
+}
+
+function input(label, path, value, type = "text", hint = "") {
+  return `<div class="field"><label>${label}</label><input type="${type}" data-path="${path}" value="${escapeHtml(value)}">${hint ? `<small>${hint}</small>` : ""}</div>`;
+}
+
+function textareaField(label, path, value, hint = "") {
+  return `<div class="field field-wide"><label>${label}</label><textarea data-path="${path}" rows="5">${escapeHtml(Array.isArray(value) ? value.join("\n") : value)}</textarea>${hint ? `<small>${hint}</small>` : ""}</div>`;
+}
+
+function numberInput(label, path, value, hint = "") {
+  return input(label, path, value, "number", hint);
+}
+
 function riskClass(value) {
   if (Number(value) >= 60) return "risk-high";
   if (Number(value) >= 35) return "risk-mid";
@@ -39,8 +86,45 @@ async function jobs() {
     <td>${row.fit_score}</td><td>${row.title}<br><small>${row.status}</small></td><td>${row.company}</td><td>${row.location}</td>
     <td>${row.work_model}</td><td>${row.education_required}</td><td>${row.salary}</td>
     <td class="${riskClass(row.risk_score)}">${row.risk_score}<br><small>${row.risk_flags || ""}</small></td>
-    <td>${row.url ? `<a class="action" href="${row.url}" target="_blank" rel="noreferrer">Abrir</a>` : "Sem link"}</td>
+    <td><button data-detail="${row.id}">Detalhes</button>${row.url ? `<a class="action" href="${row.url}" target="_blank" rel="noreferrer">Abrir</a>` : ""}</td>
   </tr>`).join("")}</tbody></table>`;
+}
+
+function applicationGuidance(row) {
+  if (row.url) return `Abra o link oficial da fonte (${row.source}) e revise os dados antes de se candidatar. O agente pode preparar currículo/carta, mas o envio depende de aprovação.`;
+  if (row.source === "companyHunter") return "Sem link porque é uma prospecção ativa. O próximo passo é pesquisar contatos da empresa-alvo, página Trabalhe Conosco ou e-mail de RH/comercial.";
+  if (String(row.source).includes("whatsapp")) return "Sem link no WhatsApp. Peça detalhes por mensagem: empresa, local, horário, remuneração, função, contato responsável e forma oficial de candidatura.";
+  return "Sem link encontrado. Confirme a fonte original, procure a empresa pelo nome e evite enviar dados pessoais antes de validar a oportunidade.";
+}
+
+async function jobDetail(id) {
+  const row = await json(`/api/jobs/${id}`);
+  app.innerHTML = `<section>
+    <p><button data-tab="jobs">Voltar</button></p>
+    <h2>${row.title}</h2>
+    <p><strong>Empresa:</strong> ${row.company || "A confirmar"}</p>
+    <p><strong>Fonte:</strong> ${row.source || "A confirmar"} ${row.url ? `| <a href="${row.url}" target="_blank" rel="noreferrer">abrir link</a>` : "| sem link"}</p>
+    <p><strong>Local/modelo:</strong> ${row.location || "A confirmar"} | ${row.work_model || "A confirmar"}</p>
+    <p><strong>Salário:</strong> ${row.salary || "Não informado"}</p>
+    <p><strong>Nível:</strong> ${row.seniority_level || "A confirmar"} | <strong>Escolaridade:</strong> ${row.education_required || "Não informada"}</p>
+    <p><strong>CNH:</strong> ${row.driver_license_required ? `exige ${row.driver_license_categories || ""}` : "não detectado"} | <strong>Veículo próprio:</strong> ${row.own_vehicle_required ? "sim" : "não detectado"}</p>
+    <div class="grid">
+      <div class="metric"><strong>${row.fit_score}</strong><span>Fit Score</span></div>
+      <div class="metric"><strong>${row.hire_chance_score}</strong><span>Hire Chance</span></div>
+      <div class="metric"><strong>${row.job_quality_score}</strong><span>Qualidade</span></div>
+      <div class="metric"><strong>${row.risk_score}</strong><span>Risco</span></div>
+    </div>
+    <h3>Por que apareceu</h3>
+    <p>${row.fit_reason || "Sem justificativa registrada."}</p>
+    <h3>Chance de contratação</h3>
+    <p>${row.hire_chance_reason || "A confirmar após leitura completa da vaga."}</p>
+    <h3>Riscos</h3>
+    <p class="${riskClass(row.risk_score)}">${row.risk_flags || "Nenhum risco crítico detectado."}</p>
+    <h3>Como se candidatar ou saber mais</h3>
+    <p>${applicationGuidance(row)}</p>
+    <h3>Descrição</h3>
+    <pre>${row.description || "Sem descrição."}</pre>
+  </section>`;
 }
 
 async function informal() {
@@ -61,11 +145,179 @@ async function applications() {
 
 async function settings() {
   const data = await json("/api/settings");
-  app.innerHTML = `<section><h2>Configurações</h2><textarea id="settings">${JSON.stringify(data, null, 2)}</textarea><p><button id="save">Salvar</button></p></section>`;
-  document.querySelector("#save").onclick = async () => {
-    await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: document.querySelector("#settings").value });
-    alert("Configurações salvas.");
+  const resumes = await json("/api/resumes");
+  const careerLevels = getPath(data, "jobSearchPreferences.careerLevels", {});
+  const workStyles = getPath(data, "jobSearchPreferences.workStyles", {});
+  const schedules = getPath(data, "jobSearchPreferences.schedulePreferences", {});
+  const contracts = getPath(data, "jobSearchPreferences.contractTypes", {});
+  const education = getPath(data, "jobSearchPreferences.educationFilters", {});
+  const license = getPath(data, "jobSearchPreferences.driverLicenseFilters", {});
+  const sources = getPath(data, "sources", {});
+  const tracks = getPath(data, "careerTracks", {});
+  const informal = getPath(data, "informalWork", {});
+
+  app.innerHTML = `<div class="settings-shell">
+    <aside class="settings-nav">
+      <button data-jump="perfil">Perfil</button>
+      <button data-jump="busca">Busca</button>
+      <button data-jump="local">Local e Modelo</button>
+      <button data-jump="salario">Salário</button>
+      <button data-jump="freelas">Freelas</button>
+      <button data-jump="fontes">Fontes</button>
+      <button data-jump="seguranca">Segurança</button>
+      <button data-jump="codigo">Código</button>
+    </aside>
+
+    <section class="settings-panel">
+      <div class="settings-head">
+        <div>
+          <h2>Configuração do agente</h2>
+          <p>Preencha como um formulário. No final, o código JSON é atualizado automaticamente com suas escolhas.</p>
+        </div>
+        <div class="save-box">
+          <button id="saveVisualSettings" class="primary">Salvar configurações</button>
+          <span id="saveStatus"></span>
+        </div>
+      </div>
+
+      <div class="config-section" id="perfil">
+        <h3>Perfil e currículos</h3>
+        <div class="form-grid">
+          ${input("Nome", "profile.name", data.profile.name)}
+          ${input("E-mail", "profile.email", data.profile.email)}
+          ${input("Telefone", "profile.phone", data.profile.phone)}
+          ${input("LinkedIn", "profile.linkedin", data.profile.linkedin)}
+          ${input("Cidade", "profile.city", data.profile.city)}
+          ${input("Estado", "profile.state", data.profile.state)}
+          ${textareaField("Resumo profissional", "profile.summary", data.profile.summary)}
+          ${textareaField("Formações, uma por linha", "profile.education.degrees", data.profile.education.degrees)}
+        </div>
+        <div class="resume-list"><strong>Currículos encontrados:</strong> ${resumes.files.length ? resumes.files.map((file) => `<span>${escapeHtml(file)}</span>`).join("") : "<em>Nenhum currículo detectado.</em>"}</div>
+      </div>
+
+      <div class="config-section" id="busca">
+        <h3>O que buscar</h3>
+        ${textareaField("Cargos e palavras-chave, um por linha", "jobSearchPreferences.targetRoles", getPath(data, "jobSearchPreferences.targetRoles", []), "Inclua cargos formais e termos de vagas informais.")}
+        ${checkboxGrid("Trilhas de carreira", "careerTracks", tracks)}
+        ${checkboxGrid("Níveis aceitos", "jobSearchPreferences.careerLevels", careerLevels)}
+        ${checkboxGrid("Tipos de contrato", "jobSearchPreferences.contractTypes", contracts)}
+      </div>
+
+      <div class="config-section" id="local">
+        <h3>Local, modelo e rotina</h3>
+        <div class="form-grid">
+          ${textareaField("Locais preferidos, um por linha", "jobSearchPreferences.locations.preferred", getPath(data, "jobSearchPreferences.locations.preferred", []))}
+          ${textareaField("Estados aceitos, um por linha", "jobSearchPreferences.locations.acceptedStates", getPath(data, "jobSearchPreferences.locations.acceptedStates", []))}
+        </div>
+        ${checkboxGrid("Modelos de trabalho", "jobSearchPreferences.workStyles", workStyles)}
+        ${checkboxGrid("Horários e escalas", "jobSearchPreferences.schedulePreferences", schedules)}
+        ${checkboxGrid("Escolaridade aceita", "jobSearchPreferences.educationFilters", education)}
+        ${checkboxGrid("CNH e veículo", "jobSearchPreferences.driverLicenseFilters", license)}
+        <div class="form-grid">
+          <label class="check-line"><input type="checkbox" data-path="profile.driverLicense.hasLicense" ${data.profile.driverLicense.hasLicense ? "checked" : ""}> Tenho CNH</label>
+          <label class="check-line"><input type="checkbox" data-path="profile.driverLicense.hasOwnVehicle" ${data.profile.driverLicense.hasOwnVehicle ? "checked" : ""}> Tenho veículo próprio</label>
+          ${textareaField("Categorias da sua CNH, uma por linha", "profile.driverLicense.categories", data.profile.driverLicense.categories)}
+        </div>
+      </div>
+
+      <div class="config-section" id="salario">
+        <h3>Salário e pretensão</h3>
+        <div class="form-grid">
+          ${numberInput("CLT mínimo mensal", "salaryPreferences.salaryByContractType.clt.minimumMonthly", getPath(data, "salaryPreferences.salaryByContractType.clt.minimumMonthly", 0))}
+          ${numberInput("CLT desejado mensal", "salaryPreferences.salaryByContractType.clt.desiredMonthly", getPath(data, "salaryPreferences.salaryByContractType.clt.desiredMonthly", 0))}
+          ${numberInput("PJ mínimo mensal", "salaryPreferences.salaryByContractType.pj.minimumMonthly", getPath(data, "salaryPreferences.salaryByContractType.pj.minimumMonthly", 0))}
+          ${numberInput("PJ desejado mensal", "salaryPreferences.salaryByContractType.pj.desiredMonthly", getPath(data, "salaryPreferences.salaryByContractType.pj.desiredMonthly", 0))}
+          ${numberInput("Diária mínima", "salaryPreferences.salaryByContractType.freelancer.minimumDaily", getPath(data, "salaryPreferences.salaryByContractType.freelancer.minimumDaily", 0))}
+          ${numberInput("Valor/hora mínimo", "salaryPreferences.salaryByContractType.hourly.minimumHourly", getPath(data, "salaryPreferences.salaryByContractType.hourly.minimumHourly", 0))}
+        </div>
+        <div class="choice-grid">
+          <label class="check-pill"><input type="checkbox" data-path="salaryPreferences.rejectWithoutSalary" ${getPath(data, "salaryPreferences.rejectWithoutSalary") ? "checked" : ""}> Rejeitar vaga sem salário</label>
+          <label class="check-pill"><input type="checkbox" data-path="salaryPreferences.penalizeWithoutSalary" ${getPath(data, "salaryPreferences.penalizeWithoutSalary") ? "checked" : ""}> Penalizar vaga sem salário</label>
+          <label class="check-pill"><input type="checkbox" data-path="salaryPreferences.askSalaryInDraft" ${getPath(data, "salaryPreferences.askSalaryInDraft") ? "checked" : ""}> Perguntar salário no rascunho</label>
+        </div>
+      </div>
+
+      <div class="config-section" id="freelas">
+        <h3>Freelas, bicos, taxas e eventos</h3>
+        ${checkboxGrid("Tipos aceitos", "informalWork", Object.fromEntries(Object.entries(informal).filter(([, value]) => typeof value === "boolean")))}
+        <div class="form-grid">
+          ${numberInput("Valor/hora mínimo", "informalWork.minimumHourlyRate", informal.minimumHourlyRate)}
+          ${numberInput("Diária mínima", "informalWork.minimumDailyRate", informal.minimumDailyRate)}
+          ${numberInput("Diária desejada", "informalWork.desiredDailyRate", informal.desiredDailyRate)}
+          ${numberInput("Taxa mínima de evento", "informalWork.minimumEventRate", informal.minimumEventRate)}
+          ${numberInput("Distância máxima em km", "informalWork.maxDistanceKm", informal.maxDistanceKm)}
+          ${numberInput("Prazo máximo para pagamento", "informalWork.maximumPaymentDelayDays", informal.maximumPaymentDelayDays)}
+        </div>
+      </div>
+
+      <div class="config-section" id="fontes">
+        <h3>Fontes de busca</h3>
+        ${checkboxGrid("Fontes ativas", "sources", sources)}
+        <div class="note"><strong>WhatsApp:</strong> cole mensagens em <code>data/whatsapp-vagas.txt</code> e rode o scan. Monitoramento em tempo real exige integração oficial/API ou encaminhamento das mensagens; automação de WhatsApp Web não é recomendada.</div>
+      </div>
+
+      <div class="config-section" id="seguranca">
+        <h3>Estratégia e segurança</h3>
+        <div class="form-grid">
+          ${numberInput("Máximo de vagas por rodada", "agent.maxJobsPerRun", data.agent.maxJobsPerRun)}
+          ${numberInput("Máximo de candidaturas por dia", "strategy.maxApplicationsPerDay", data.strategy.maxApplicationsPerDay)}
+          ${numberInput("Preparar só acima da nota", "strategy.onlyPrepareAboveScore", data.strategy.onlyPrepareAboveScore)}
+          ${numberInput("Aplicar só acima da nota", "strategy.onlyApplyAboveScore", data.strategy.onlyApplyAboveScore)}
+        </div>
+        <div class="choice-grid">
+          <label class="check-pill"><input type="checkbox" data-path="agent.enabled" ${data.agent.enabled ? "checked" : ""}> Agente ativo</label>
+          <label class="check-pill"><input type="checkbox" data-path="agent.paused" ${data.agent.paused ? "checked" : ""}> Pausar agente</label>
+          <label class="check-pill"><input type="checkbox" data-path="agent.dryRun" ${data.agent.dryRun ? "checked" : ""}> Modo seguro/dry-run</label>
+          <label class="check-pill"><input type="checkbox" data-path="applications.prepareApplications" ${getPath(data, "applications.prepareApplications") ? "checked" : ""}> Preparar candidaturas</label>
+          <label class="check-pill"><input type="checkbox" data-path="applications.autoApply" ${getPath(data, "applications.autoApply") ? "checked" : ""}> Auto apply</label>
+          <label class="check-pill"><input type="checkbox" data-path="applications.requireApprovalBeforeApply" ${getPath(data, "applications.requireApprovalBeforeApply") ? "checked" : ""}> Exigir aprovação antes de aplicar</label>
+          <label class="check-pill"><input type="checkbox" data-path="applications.requireApprovalBeforeSendingEmail" ${getPath(data, "applications.requireApprovalBeforeSendingEmail") ? "checked" : ""}> Exigir aprovação para e-mail</label>
+        </div>
+      </div>
+
+      <div class="config-section" id="codigo">
+        <h3>Código gerado pelas suas escolhas</h3>
+        <p>Este é o arquivo <code>agent-settings.json</code> que o agente usa por trás do painel.</p>
+        <textarea id="settingsCode" class="code-output" spellcheck="false"></textarea>
+      </div>
+    </section>
+  </div>`;
+
+  let currentSettings = structuredClone(data);
+  const code = document.querySelector("#settingsCode");
+
+  const readValue = (element) => {
+    if (element.type === "checkbox") return element.checked;
+    if (element.type === "number") return Number(element.value || 0);
+    if (element.tagName === "TEXTAREA") {
+      const value = element.value;
+      const original = getPath(currentSettings, element.dataset.path);
+      return Array.isArray(original) ? value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) : value;
+    }
+    return element.value;
   };
+
+  function syncCode() {
+    document.querySelectorAll("[data-path]").forEach((element) => setPath(currentSettings, element.dataset.path, readValue(element)));
+    code.value = JSON.stringify(currentSettings, null, 2);
+  }
+
+  document.querySelectorAll("[data-path]").forEach((element) => element.addEventListener("input", syncCode));
+  document.querySelectorAll("[data-jump]").forEach((button) => button.addEventListener("click", () => document.querySelector(`#${button.dataset.jump}`).scrollIntoView({ behavior: "smooth", block: "start" })));
+  code.addEventListener("input", () => {
+    try {
+      currentSettings = JSON.parse(code.value);
+      document.querySelector("#saveStatus").textContent = "Código válido.";
+    } catch {
+      document.querySelector("#saveStatus").textContent = "Código ainda não é JSON válido.";
+    }
+  });
+  document.querySelector("#saveVisualSettings").onclick = async () => {
+    syncCode();
+    const response = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: code.value });
+    document.querySelector("#saveStatus").textContent = response.ok ? "Configurações salvas." : "Não foi possível salvar.";
+  };
+  syncCode();
 }
 
 async function logs() {
@@ -84,5 +336,9 @@ async function load(tab) {
 
 document.querySelector("nav").addEventListener("click", (event) => {
   if (event.target.matches("button")) load(event.target.dataset.tab);
+});
+app.addEventListener("click", (event) => {
+  if (event.target.matches("[data-detail]")) jobDetail(event.target.dataset.detail);
+  if (event.target.matches("[data-tab]")) load(event.target.dataset.tab);
 });
 load("dashboard");
