@@ -2,14 +2,25 @@ import fs from "node:fs";
 import path from "node:path";
 import initSqlJs, { Database } from "sql.js";
 import { NormalizedJob, InformalOpportunity } from "../types.js";
+import { secrets } from "../config/secrets.js";
 
-const dbPath = path.resolve(process.cwd(), "data/jobs.sqlite");
 const schemaPath = path.resolve(process.cwd(), "src/database/schema.sql");
+
+function resolveDatabasePath(): string {
+  const rawUrl = secrets.databaseUrl || "file:./data/jobs.sqlite";
+  const withoutProtocol = rawUrl.startsWith("file:")
+    ? rawUrl.slice("file:".length)
+    : rawUrl.startsWith("sqlite://")
+      ? rawUrl.slice("sqlite://".length)
+      : rawUrl;
+  return path.isAbsolute(withoutProtocol) ? withoutProtocol : path.resolve(process.cwd(), withoutProtocol);
+}
 
 export class CareerDatabase {
   private constructor(private readonly db: Database) {}
 
   static async open(): Promise<CareerDatabase> {
+    const dbPath = resolveDatabasePath();
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     const SQL = await initSqlJs({
       locateFile: (file) => path.resolve(process.cwd(), "node_modules/sql.js/dist", file)
@@ -36,6 +47,7 @@ export class CareerDatabase {
   }
 
   save(): void {
+    const dbPath = resolveDatabasePath();
     fs.writeFileSync(dbPath, Buffer.from(this.db.export()));
   }
 

@@ -22,7 +22,7 @@ O objetivo não é sair se candidatando em massa. O agente funciona como assiste
 - Gera carta de apresentação.
 - Coloca candidatura em fila de aprovação.
 - Gera resumo diário e radar semanal.
-- Mostra painel local em `http://localhost:8788`.
+- Mostra painel local em `http://localhost:8788` com dashboard, filtros, colunas configuráveis, currículo e configuração visual.
 - Registra auditoria em JSONL com dados sensíveis mascarados.
 
 ## O que ele não faz
@@ -121,6 +121,8 @@ GEMINI_API_KEY=
 
 Mesmo sem IA externa, o projeto roda com regras determinísticas.
 
+Você também pode abrir o painel, ir em **Configurações > IA e online** e salvar a chave/modelo sem editar arquivo manualmente. O painel grava no `.env`, que é ignorado pelo Git.
+
 ## Google, SINE, InfoJobs, 99jobs e agências de RH
 
 O agente cria buscas direcionadas usando seus cargos e localidades configuradas. Sem chave do Google, ele gera links prontos para abrir no painel. Com Google Programmable Search configurado, ele importa resultados automaticamente.
@@ -160,6 +162,7 @@ Enquanto os PDFs não existirem, o agente ainda gera versões Markdown em `gener
 npm run dev
 npm run build
 npm start
+npm run agent
 npm run dashboard
 npm run scan
 npm run score
@@ -169,6 +172,8 @@ npm run weekly-radar
 npm run test
 npm run lint
 ```
+
+`npm start` sobe o painel web. Para executar comandos do agente diretamente, use `npm run agent -- scan`, `npm run scan` ou os scripts específicos.
 
 ## Fluxo recomendado
 
@@ -231,6 +236,18 @@ Configure segredos no GitHub Actions. Nunca coloque tokens no repositório.
 Quando roda no GitHub, o agente executa em servidor temporário do Actions: instala dependências, faz scan, pontua, prepara candidaturas e salva artefatos com banco, logs e relatórios. O painel web local não fica “hospedado” pelo GitHub Pages, porque ele depende de Node.js, Express e SQLite. Para painel online contínuo, use um serviço com Node.js persistente, como Render, Railway, Fly.io ou VPS.
 
 O GitHub Actions serve para automação agendada e histórico por artefatos; o painel em `localhost:8788` serve para operação local com aprovação manual.
+
+## Rodar online e sincronizado
+
+GitHub sozinho não mantém este painel online porque o app depende de Node.js, Express e SQLite. Para acessar de qualquer lugar e manter tudo sincronizado, hospede em Render, Railway, Fly.io ou VPS com disco persistente.
+
+Arquivos preparados:
+
+- `Dockerfile`
+- `render.yaml`
+- `docs/ONLINE_DEPLOY.md`
+
+No Render, use `DATABASE_URL=file:/var/data/jobs.sqlite` e configure um disco persistente em `/var/data`. As chaves ficam em environment variables do serviço, não no repositório.
 
 ## Expansão de conectores
 

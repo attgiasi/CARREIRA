@@ -9,7 +9,7 @@ export async function askOpenAI(prompt: string): Promise<string> {
       Authorization: `Bearer ${secrets.openaiApiKey}`
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      model: secrets.openaiModel,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2
     })

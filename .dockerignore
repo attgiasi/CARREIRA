@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.env
+data/*.sqlite
+data/*.sqlite-*
+logs/*.jsonl
+logs/*.log
+generated/resumes/*
+generated/cover-letters/*
+generated/application-packets/*
+generated/reports/*
+resumes/*.pdf

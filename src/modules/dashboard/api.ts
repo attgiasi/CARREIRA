@@ -5,25 +5,85 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { CareerDatabase } from "../../database/db.js";
 import { loadSettings, saveSettings } from "../../config/settings.js";
-import { secrets } from "../../config/secrets.js";
+import { refreshSecrets, secrets } from "../../config/secrets.js";
 import { normalizeJob } from "../jobs/normalizer.js";
 import { buildApplicationPacket } from "../applications/applicationBuilder.js";
 import { enqueueApplication } from "../applications/approvalQueue.js";
 
 export const apiRouter = Router();
 const execFileAsync = promisify(execFile);
+const envPath = path.resolve(process.cwd(), ".env");
+
+function readEnvMap(): Map<string, string> {
+  const map = new Map<string, string>();
+  if (!fs.existsSync(envPath)) return map;
+  for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (match) map.set(match[1], match[2]);
+  }
+  return map;
+}
+
+function writeEnvValues(values: Record<string, string | undefined>): void {
+  const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8").split(/\r?\n/) : [];
+  const pending = new Map(Object.entries(values).filter(([, value]) => value !== undefined) as Array<[string, string]>);
+  const used = new Set<string>();
+  const next = existing
+    .filter((line) => line.trim().length > 0)
+    .map((line) => {
+      const match = line.match(/^([A-Z0-9_]+)=/);
+      if (!match || !pending.has(match[1])) return line;
+      used.add(match[1]);
+      return `${match[1]}=${pending.get(match[1]) ?? ""}`;
+    });
+  for (const [key, value] of pending.entries()) {
+    if (!used.has(key)) next.push(`${key}=${value}`);
+  }
+  fs.writeFileSync(envPath, `${next.join("\n")}\n`, "utf8");
+}
+
+function envStatus() {
+  const envMap = readEnvMap();
+  return {
+    envExists: fs.existsSync(envPath),
+    openaiConfigured: Boolean(secrets.openaiApiKey),
+    openaiModel: secrets.openaiModel,
+    googleSearchConfigured: Boolean(secrets.googleSearchApiKey && secrets.googleSearchEngineId),
+    gmailConfigured: Boolean(secrets.googleClientId && secrets.googleClientSecret && secrets.gmailRefreshToken),
+    databaseUrl: secrets.databaseUrl,
+    port: String(secrets.dashboardPort),
+    nodeEnv: process.env.NODE_ENV ?? "development",
+    envKeys: [...envMap.keys()].filter((key) => !key.includes("KEY") && !key.includes("TOKEN") && !key.includes("SECRET"))
+  };
+}
+
+apiRouter.get("/health", (_req, res) => {
+  res.json({ ok: true, status: "online", time: new Date().toISOString(), environment: envStatus() });
+});
 
 apiRouter.get("/summary", async (_req, res) => {
   const db = await CareerDatabase.open();
   const jobs = db.query("SELECT COUNT(*) as total FROM jobs")[0]?.total ?? 0;
+  const availableJobs = db.query(`
+    SELECT COUNT(*) as total
+    FROM jobs j
+    LEFT JOIN applications a ON a.job_id = j.id
+    WHERE a.id IS NULL
+  `)[0]?.total ?? 0;
   const gold = db.query("SELECT COUNT(*) as total FROM jobs WHERE status = 'Vaga Ouro' AND source NOT IN ('google-assisted-search', 'sine', 'infojobs', 'jobs99', 'rh-agencies-curitiba')")[0]?.total ?? 0;
   const applications = db.query("SELECT COUNT(*) as total FROM applications")[0]?.total ?? 0;
+  const awaitingApproval = db.query("SELECT COUNT(*) as total FROM applications WHERE approval_status = 'aguardando_aprovacao'")[0]?.total ?? 0;
   const approved = db.query("SELECT COUNT(*) as total FROM applications WHERE approval_status = 'aprovado_pelo_usuario'")[0]?.total ?? 0;
+  const rejected = db.query("SELECT COUNT(*) as total FROM applications WHERE approval_status = 'rejeitado_pelo_usuario'")[0]?.total ?? 0;
   const sent = db.query("SELECT COUNT(*) as total FROM applications WHERE application_status = 'Candidatura enviada' OR sent_by_agent = 1")[0]?.total ?? 0;
   const waitingRealJob = db.query("SELECT COUNT(*) as total FROM applications WHERE application_status = 'Aguardando vaga real da fonte'")[0]?.total ?? 0;
   const ready = db.query("SELECT COUNT(*) as total FROM applications WHERE application_status = 'Pronta para envio assistido'")[0]?.total ?? 0;
   const informal = db.query("SELECT COUNT(*) as total FROM informal_opportunities")[0]?.total ?? 0;
   const bySource = db.query("SELECT source, COUNT(*) as total FROM jobs GROUP BY source ORDER BY total DESC LIMIT 8");
+  const byWorkModel = db.query("SELECT COALESCE(work_model, 'A confirmar') as work_model, COUNT(*) as total FROM jobs GROUP BY work_model ORDER BY total DESC LIMIT 6");
+  const byApplicationStatus = db.query("SELECT COALESCE(application_status, 'Sem status') as status, COUNT(*) as total FROM applications GROUP BY application_status ORDER BY total DESC LIMIT 8");
+  const lastFoundAt = db.query("SELECT MAX(found_at) as value FROM jobs")[0]?.value ?? "";
+  const lastAppliedAt = db.query("SELECT MAX(applied_at) as value FROM applications WHERE applied_at IS NOT NULL")[0]?.value ?? "";
   const topJobs = db.query(`
     SELECT title, company, source, fit_score, risk_score, status
     FROM jobs
@@ -31,7 +91,35 @@ apiRouter.get("/summary", async (_req, res) => {
     ORDER BY fit_score DESC, job_quality_score DESC, risk_score ASC
     LIMIT 5
   `);
-  res.json({ jobs, gold, applications, approved, sent, waitingRealJob, ready, informal, bySource, topJobs });
+  const newestJobs = db.query(`
+    SELECT j.title, j.company, j.source, j.location, j.work_model, j.fit_score, j.risk_score, j.found_at
+    FROM jobs j
+    LEFT JOIN applications a ON a.job_id = j.id
+    WHERE a.id IS NULL
+    ORDER BY j.id DESC
+    LIMIT 5
+  `);
+  res.json({
+    jobs,
+    availableJobs,
+    gold,
+    applications,
+    awaitingApproval,
+    approved,
+    rejected,
+    sent,
+    waitingRealJob,
+    ready,
+    informal,
+    bySource,
+    byWorkModel,
+    byApplicationStatus,
+    topJobs,
+    newestJobs,
+    lastFoundAt,
+    lastAppliedAt,
+    environment: envStatus()
+  });
 });
 
 apiRouter.get("/jobs", async (_req, res) => {
@@ -186,6 +274,22 @@ apiRouter.post("/applications/reject", async (req, res) => {
   res.json({ ok: true, rejected: ids.length });
 });
 
+apiRouter.post("/applications/mark-sent", async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+  if (!ids.length) {
+    res.status(400).json({ error: "Nenhuma candidatura selecionada." });
+    return;
+  }
+  const db = await CareerDatabase.open();
+  for (const id of ids) {
+    db.run(
+      "UPDATE applications SET approval_status = ?, application_status = ?, sent_by_agent = 1, applied_at = COALESCE(applied_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ? WHERE id = ?",
+      ["aprovado_pelo_usuario", "Candidatura enviada", `\nMarcada como enviada no painel em ${new Date().toISOString()}.`, id]
+    );
+  }
+  res.json({ ok: true, sent: ids.length });
+});
+
 apiRouter.post("/applications/assisted-apply", async (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
   if (!ids.length) {
@@ -273,10 +377,33 @@ apiRouter.post("/settings", (req, res) => {
   res.json({ ok: true });
 });
 
+apiRouter.get("/environment", (_req, res) => {
+  res.json(envStatus());
+});
+
+apiRouter.post("/environment", (req, res) => {
+  const body = req.body as Record<string, string | undefined>;
+  const updates: Record<string, string | undefined> = {
+    OPENAI_MODEL: body.openaiModel?.trim() || "gpt-4o-mini",
+    GOOGLE_SEARCH_ENGINE_ID: body.googleSearchEngineId?.trim() || undefined,
+    DATABASE_URL: body.databaseUrl?.trim() || "file:./data/jobs.sqlite",
+    PORT: body.port?.trim() || undefined,
+    DASHBOARD_PORT: body.port?.trim() || "8788"
+  };
+  if (body.openaiApiKey?.trim()) updates.OPENAI_API_KEY = body.openaiApiKey.trim();
+  if (body.googleSearchApiKey?.trim()) updates.GOOGLE_SEARCH_API_KEY = body.googleSearchApiKey.trim();
+  writeEnvValues(updates);
+  Object.entries(updates).forEach(([key, value]) => {
+    if (value !== undefined) process.env[key] = value;
+  });
+  refreshSecrets();
+  res.json({ ok: true, environment: envStatus() });
+});
+
 apiRouter.get("/resumes", (_req, res) => {
   const folder = path.resolve(process.cwd(), "resumes");
   const files = fs.existsSync(folder)
-    ? fs.readdirSync(folder).filter((file) => /\.(pdf|docx?|md)$/i.test(file))
+    ? fs.readdirSync(folder).filter((file) => /\.(pdf|docx?|md)$/i.test(file) && file.toLowerCase() !== "readme.md")
     : [];
   res.json({ files });
 });
@@ -285,17 +412,41 @@ apiRouter.get("/career-profile", (_req, res) => {
   const settings = loadSettings();
   const folder = path.resolve(process.cwd(), "resumes");
   const resumes = fs.existsSync(folder)
-    ? fs.readdirSync(folder).filter((file) => /\.(pdf|docx?|md)$/i.test(file))
+    ? fs.readdirSync(folder).filter((file) => /\.(pdf|docx?|md)$/i.test(file) && file.toLowerCase() !== "readme.md")
+    : [];
+  const generatedResumeFolder = path.resolve(process.cwd(), "generated/resumes");
+  const generatedCoverFolder = path.resolve(process.cwd(), "generated/cover-letters");
+  const generatedResumes = fs.existsSync(generatedResumeFolder)
+    ? fs.readdirSync(generatedResumeFolder).filter((file) => /\.(md|docx?|pdf)$/i.test(file)).slice(-12).reverse()
+    : [];
+  const generatedCoverLetters = fs.existsSync(generatedCoverFolder)
+    ? fs.readdirSync(generatedCoverFolder).filter((file) => /\.(md|docx?|pdf)$/i.test(file)).slice(-12).reverse()
     : [];
   res.json({
     profile: settings.profile,
     careerTracks: settings.careerTracks,
     targetRoles: (settings.jobSearchPreferences as { targetRoles?: string[] }).targetRoles ?? [],
     resumes,
+    generatedResumes,
+    generatedCoverLetters,
+    strengths: [
+      "Mais de 12 anos em hospitalidade, bares, eventos e atendimento ao cliente.",
+      "Gestão de operação, padronização, treinamento e rotina de serviço.",
+      "Boa aderência para atendimento, backoffice, experiência do cliente e análise operacional.",
+      "Comunicação com cliente, organização de eventos e leitura de risco operacional."
+    ],
+    applicationPositioning: {
+      headline: "Hospitalidade premium, operação e experiência do cliente com visão prática de negócio.",
+      safeClaims: [
+        "Não inventar experiência, CNH, idioma ou certificação.",
+        "Adaptar currículo e carta ao cargo, fonte, salário, local e modelo de trabalho.",
+        "Destacar resultados, atendimento, treinamento, organização e confiabilidade operacional."
+      ]
+    },
     ai: {
       provider: settings.ai.provider,
       openaiConfigured: Boolean(secrets.openaiApiKey),
-      model: process.env.OPENAI_MODEL || settings.ai.openai?.model || "gpt-4o-mini"
+      model: secrets.openaiModel || settings.ai.openai?.model || "gpt-4o-mini"
     }
   });
 });
