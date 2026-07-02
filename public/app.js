@@ -68,6 +68,19 @@ function riskClass(value) {
   return "";
 }
 
+function shortDescription(value, max = 170) {
+  const clean = String(value || "Sem descrição informada.").replace(/\s+/g, " ").trim();
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+}
+
+function scoreBadge(row) {
+  return `<div class="score-stack">
+    <strong>${row.fit_score ?? "-"}</strong>
+    <span>${escapeHtml(row.status || row.job_status || "Sem classificação")}</span>
+    <small>Risco ${row.risk_score ?? "-"}</small>
+  </div>`;
+}
+
 async function dashboard() {
   const summary = await json("/api/summary");
   app.innerHTML = `<div class="grid">
@@ -81,13 +94,59 @@ async function dashboard() {
 
 async function jobs() {
   const rows = await json("/api/jobs");
-  app.innerHTML = `<table><thead><tr><th>Nota</th><th>Vaga</th><th>Empresa</th><th>Local</th><th>Modelo</th><th>Escolaridade</th><th>Salário</th><th>Risco</th><th>Ação</th></tr></thead>
-  <tbody>${rows.map((row) => `<tr>
-    <td>${row.fit_score}</td><td>${row.title}<br><small>${row.status}</small></td><td>${row.company}</td><td>${row.location}</td>
-    <td>${row.work_model}</td><td>${row.education_required}</td><td>${row.salary}</td>
-    <td class="${riskClass(row.risk_score)}">${row.risk_score}<br><small>${row.risk_flags || ""}</small></td>
-    <td><button data-detail="${row.id}">Detalhes</button>${row.url ? `<a class="action" href="${row.url}" target="_blank" rel="noreferrer">Abrir</a>` : ""}</td>
-  </tr>`).join("")}</tbody></table>`;
+  app.innerHTML = `<section>
+    <div class="toolbar">
+      <div>
+        <h2>Vagas encontradas</h2>
+        <p>Selecione vagas reais ou promissoras para preparar currículo, carta e candidatura.</p>
+      </div>
+      <div class="toolbar-actions">
+        <button id="selectAllJobs">Selecionar todas</button>
+        <button id="clearJobs">Limpar seleção</button>
+        <button id="prepareSelectedJobs" class="primary">Preparar candidatura</button>
+      </div>
+    </div>
+    <div id="jobActionResult" class="note hidden"></div>
+    <table class="data-table"><thead><tr>
+      <th></th>
+      <th>Nome da vaga</th>
+      <th>Salário</th>
+      <th>Local</th>
+      <th>Tipo de trabalho</th>
+      <th>Descrição resumida</th>
+      <th>Fonte</th>
+      <th>Nota</th>
+      <th>Ação</th>
+    </tr></thead>
+    <tbody>${rows.map((row) => `<tr>
+      <td><input class="job-check" type="checkbox" value="${row.id}"></td>
+      <td><strong>${escapeHtml(row.title)}</strong><br><small>${escapeHtml(row.company || "Empresa a confirmar")}</small></td>
+      <td>${escapeHtml(row.salary || "Não informado")}</td>
+      <td>${escapeHtml(row.location || "A confirmar")}</td>
+      <td>${escapeHtml(row.work_model || "A confirmar")}</td>
+      <td>${escapeHtml(shortDescription(row.description))}</td>
+      <td>${escapeHtml(row.source || "-")}</td>
+      <td>${scoreBadge(row)}</td>
+      <td><button data-detail="${row.id}">Detalhes</button>${row.url ? `<a class="action" href="${row.url}" target="_blank" rel="noreferrer">Abrir fonte</a>` : ""}</td>
+    </tr>`).join("")}</tbody></table>
+  </section>`;
+
+  const selectedJobIds = () => [...document.querySelectorAll(".job-check:checked")].map((input) => Number(input.value));
+  const resultBox = document.querySelector("#jobActionResult");
+  const showResult = (message) => {
+    resultBox.classList.remove("hidden");
+    resultBox.innerHTML = message;
+  };
+  document.querySelector("#selectAllJobs").onclick = () => document.querySelectorAll(".job-check").forEach((input) => input.checked = true);
+  document.querySelector("#clearJobs").onclick = () => document.querySelectorAll(".job-check").forEach((input) => input.checked = false);
+  document.querySelector("#prepareSelectedJobs").onclick = async () => {
+    const ids = selectedJobIds();
+    if (!ids.length) return showResult("Selecione pelo menos uma vaga.");
+    const response = await fetch("/api/jobs/prepare-selected", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+    const data = await response.json();
+    const skipped = (data.skipped || []).map((item) => `<li>#${item.id}: ${escapeHtml(item.reason)}</li>`).join("");
+    showResult(response.ok ? `${data.prepared} candidatura(s) preparada(s). ${skipped ? `<ul>${skipped}</ul>` : ""}<p>Agora vá para a aba <strong>Candidaturas</strong> para aprovar e clicar em <strong>Candidatar-se com IA</strong>.</p>` : escapeHtml(data.error || "Erro ao preparar."));
+  };
 }
 
 function applicationGuidance(row) {
@@ -151,17 +210,33 @@ async function applications() {
         <button id="selectAllApplications">Selecionar todas</button>
         <button id="clearApplications">Limpar seleção</button>
         <button id="approveApplications" class="primary">Aprovar selecionadas</button>
-        <button id="assistedApplyApplications">Candidatar aprovadas</button>
+        <button id="assistedApplyApplications">Candidatar-se com IA</button>
         <button id="rejectApplications">Rejeitar</button>
       </div>
     </div>
     <div id="applicationActionResult" class="note hidden"></div>
-    <table><thead><tr><th></th><th>Vaga</th><th>Fonte</th><th>Notas</th><th>Status</th><th>Materiais</th><th>Ação</th></tr></thead>
+    <table class="data-table"><thead><tr>
+      <th></th>
+      <th>Nome da vaga</th>
+      <th>Salário</th>
+      <th>Local</th>
+      <th>Tipo de trabalho</th>
+      <th>Descrição resumida</th>
+      <th>Fonte</th>
+      <th>Nota</th>
+      <th>Status</th>
+      <th>Currículo/Carta</th>
+      <th>Ação</th>
+    </tr></thead>
     <tbody>${rows.map((row) => `<tr>
       <td><input class="application-check" type="checkbox" value="${row.id}"></td>
       <td><strong>${escapeHtml(row.title || `Vaga ${row.job_id || ""}`)}</strong><br><small>${escapeHtml(row.company || "Empresa a confirmar")}</small></td>
+      <td>${escapeHtml(row.salary || "Não informado")}</td>
+      <td>${escapeHtml(row.location || "A confirmar")}</td>
+      <td>${escapeHtml(row.work_model || "A confirmar")}</td>
+      <td>${escapeHtml(shortDescription(row.description))}</td>
       <td>${escapeHtml(row.source || "-")}<br><small>${row.url ? "tem link" : "sem link"}</small></td>
-      <td>Fit ${row.fit_score ?? "-"}<br><span class="${riskClass(row.risk_score)}">Risco ${row.risk_score ?? "-"}</span></td>
+      <td>${scoreBadge(row)}</td>
       <td><strong>${escapeHtml(row.application_status || "-")}</strong><br><small>${escapeHtml(row.approval_status || "-")}</small></td>
       <td><small>CV: ${escapeHtml(row.generated_resume_path || "")}</small><br><small>Carta: ${escapeHtml(row.cover_letter_path || "")}</small></td>
       <td>${row.url ? `<a class="action" href="${row.url}" target="_blank" rel="noreferrer">Abrir fonte</a>` : ""}${row.job_id ? `<button data-detail="${row.job_id}">Detalhes</button>` : ""}</td>

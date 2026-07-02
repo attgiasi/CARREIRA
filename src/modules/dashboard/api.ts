@@ -3,6 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { CareerDatabase } from "../../database/db.js";
 import { loadSettings, saveSettings } from "../../config/settings.js";
+import { normalizeJob } from "../jobs/normalizer.js";
+import { buildApplicationPacket } from "../applications/applicationBuilder.js";
+import { enqueueApplication } from "../applications/approvalQueue.js";
 
 export const apiRouter = Router();
 
@@ -18,6 +21,43 @@ apiRouter.get("/summary", async (_req, res) => {
 apiRouter.get("/jobs", async (_req, res) => {
   const db = await CareerDatabase.open();
   res.json(db.query("SELECT * FROM jobs ORDER BY fit_score DESC, risk_score ASC LIMIT 300"));
+});
+
+apiRouter.post("/jobs/prepare-selected", async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+  if (!ids.length) {
+    res.status(400).json({ error: "Nenhuma vaga selecionada." });
+    return;
+  }
+  const db = await CareerDatabase.open();
+  const settings = loadSettings();
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = db.query<Record<string, unknown>>(`SELECT * FROM jobs WHERE id IN (${placeholders})`, ids);
+  let prepared = 0;
+  const skipped: Array<{ id: number; reason: string }> = [];
+
+  for (const row of rows) {
+    const jobId = Number(row.id);
+    const exists = db.query("SELECT id FROM applications WHERE job_id = ? LIMIT 1", [jobId])[0];
+    if (exists) {
+      skipped.push({ id: jobId, reason: "Já existe candidatura preparada." });
+      continue;
+    }
+    const job = normalizeJob({
+      externalId: String(row.external_id ?? ""),
+      title: String(row.title ?? ""),
+      company: String(row.company ?? ""),
+      location: String(row.location ?? ""),
+      source: String(row.source ?? ""),
+      url: String(row.url ?? ""),
+      description: String(row.description ?? ""),
+      salary: String(row.salary ?? "")
+    }, settings);
+    await enqueueApplication(buildApplicationPacket(jobId, job, settings));
+    prepared += 1;
+  }
+
+  res.json({ ok: true, prepared, skipped });
 });
 
 apiRouter.get("/jobs/:id", async (req, res) => {
@@ -44,7 +84,13 @@ apiRouter.get("/applications", async (_req, res) => {
       j.company,
       j.source,
       j.url,
+      j.salary,
+      j.location,
+      j.work_model,
+      j.description,
       j.fit_score,
+      j.hire_chance_score,
+      j.job_quality_score,
       j.risk_score,
       j.status as job_status
     FROM applications a
