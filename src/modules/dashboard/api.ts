@@ -1,13 +1,17 @@
 import { Router } from "express";
 import fs from "node:fs";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { CareerDatabase } from "../../database/db.js";
 import { loadSettings, saveSettings } from "../../config/settings.js";
+import { secrets } from "../../config/secrets.js";
 import { normalizeJob } from "../jobs/normalizer.js";
 import { buildApplicationPacket } from "../applications/applicationBuilder.js";
 import { enqueueApplication } from "../applications/approvalQueue.js";
 
 export const apiRouter = Router();
+const execFileAsync = promisify(execFile);
 
 apiRouter.get("/summary", async (_req, res) => {
   const db = await CareerDatabase.open();
@@ -43,6 +47,7 @@ apiRouter.get("/jobs", async (_req, res) => {
       a.notes as application_notes
     FROM jobs j
     LEFT JOIN applications a ON a.job_id = j.id
+    WHERE a.id IS NULL
     ORDER BY
       CASE WHEN j.source IN ('google-assisted-search', 'sine', 'infojobs', 'jobs99', 'rh-agencies-curitiba') THEN 1 ELSE 0 END ASC,
       j.fit_score DESC,
@@ -50,6 +55,21 @@ apiRouter.get("/jobs", async (_req, res) => {
       j.risk_score ASC
     LIMIT 300
   `));
+});
+
+apiRouter.post("/scan", async (_req, res) => {
+  try {
+    const entry = path.resolve(process.cwd(), "dist/src/index.js");
+    const { stdout, stderr } = await execFileAsync(process.execPath, [entry, "scan"], {
+      cwd: process.cwd(),
+      timeout: 180000,
+      maxBuffer: 1024 * 1024 * 4
+    });
+    res.json({ ok: true, stdout, stderr });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ ok: false, error: message });
+  }
 });
 
 apiRouter.post("/jobs/prepare-selected", async (req, res) => {
@@ -144,6 +164,7 @@ apiRouter.post("/applications/approve", async (req, res) => {
       "UPDATE applications SET approval_status = ?, application_status = ?, notes = COALESCE(notes, '') || ? WHERE id = ?",
       ["aprovado_pelo_usuario", "Aprovada pelo usuário", `\nAprovada no painel em ${new Date().toISOString()}.`, id]
     );
+    db.run("UPDATE applications SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [id]);
   }
   res.json({ ok: true, approved: ids.length });
 });
@@ -160,6 +181,7 @@ apiRouter.post("/applications/reject", async (req, res) => {
       "UPDATE applications SET approval_status = ?, application_status = ?, notes = COALESCE(notes, '') || ? WHERE id = ?",
       ["rejeitado_pelo_usuario", "Rejeitada", `\nRejeitada no painel em ${new Date().toISOString()}.`, id]
     );
+    db.run("UPDATE applications SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [id]);
   }
   res.json({ ok: true, rejected: ids.length });
 });
@@ -205,7 +227,7 @@ apiRouter.post("/applications/assisted-apply", async (req, res) => {
     }
     if (["google-assisted-search", "sine", "infojobs", "jobs99", "rh-agencies-curitiba"].includes(source)) {
       db.run(
-        "UPDATE applications SET application_status = ?, notes = COALESCE(notes, '') || ? WHERE id = ?",
+        "UPDATE applications SET application_status = ?, updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ? WHERE id = ?",
         ["Aguardando vaga real da fonte", `\nFonte assistida: abrir o link, escolher vaga real e importar o link específico.`, id]
       );
       actions.push({
@@ -219,7 +241,7 @@ apiRouter.post("/applications/assisted-apply", async (req, res) => {
     }
     if (!url) {
       db.run(
-        "UPDATE applications SET application_status = ?, notes = COALESCE(notes, '') || ? WHERE id = ?",
+        "UPDATE applications SET application_status = ?, updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ? WHERE id = ?",
         ["Aguardando canal de candidatura", `\nSem URL/canal oficial para envio automático seguro.`, id]
       );
       actions.push({
@@ -231,7 +253,7 @@ apiRouter.post("/applications/assisted-apply", async (req, res) => {
       continue;
     }
     db.run(
-      "UPDATE applications SET application_status = ?, notes = COALESCE(notes, '') || ? WHERE id = ?",
+      "UPDATE applications SET application_status = ?, updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ? WHERE id = ?",
       ["Pronta para envio assistido", `\nAprovada para candidatura assistida. Abrir fonte oficial: ${url}`, id]
     );
     actions.push({
@@ -257,4 +279,23 @@ apiRouter.get("/resumes", (_req, res) => {
     ? fs.readdirSync(folder).filter((file) => /\.(pdf|docx?|md)$/i.test(file))
     : [];
   res.json({ files });
+});
+
+apiRouter.get("/career-profile", (_req, res) => {
+  const settings = loadSettings();
+  const folder = path.resolve(process.cwd(), "resumes");
+  const resumes = fs.existsSync(folder)
+    ? fs.readdirSync(folder).filter((file) => /\.(pdf|docx?|md)$/i.test(file))
+    : [];
+  res.json({
+    profile: settings.profile,
+    careerTracks: settings.careerTracks,
+    targetRoles: (settings.jobSearchPreferences as { targetRoles?: string[] }).targetRoles ?? [],
+    resumes,
+    ai: {
+      provider: settings.ai.provider,
+      openaiConfigured: Boolean(secrets.openaiApiKey),
+      model: process.env.OPENAI_MODEL || settings.ai.openai?.model || "gpt-4o-mini"
+    }
+  });
 });

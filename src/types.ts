@@ -10,6 +10,11 @@ export interface AgentSettings {
     maxJobsPerRun: number;
     dashboardPort: number;
   };
+  ai: {
+    provider: string;
+    openai?: { enabled?: boolean; model?: string };
+    gemini?: { enabled?: boolean; model?: string };
+  };
   profile: {
     name: string;
     city: string;
@@ -22,6 +27,7 @@ export interface AgentSettings {
     education: { highestLevel: string; degrees: string[] };
     driverLicense: { hasLicense: boolean; categories: string[]; hasOwnVehicle: boolean };
   };
+  careerTracks: JsonRecord;
   jobSearchPreferences: JsonRecord;
   salaryPreferences: JsonRecord;
   informalWork: JsonRecord;

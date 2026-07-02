@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS applications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   job_id INTEGER,
   informal_opportunity_id INTEGER,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   applied_at TEXT,
   application_status TEXT,
   cv_version TEXT,

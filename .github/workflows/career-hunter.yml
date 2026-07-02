@@ -48,6 +48,7 @@ jobs:
         with:
           name: career-hunter-artifacts
           path: |
+            data/jobs.sqlite
             logs/
             generated/reports/
           if-no-files-found: ignore

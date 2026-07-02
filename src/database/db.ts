@@ -18,8 +18,21 @@ export class CareerDatabase {
     const db = new SQL.Database(data);
     db.run(fs.readFileSync(schemaPath, "utf8"));
     const instance = new CareerDatabase(db);
+    instance.ensureApplicationColumns();
     instance.save();
     return instance;
+  }
+
+  private ensureApplicationColumns(): void {
+    const existing = new Set(this.query<{ name: string }>("PRAGMA table_info(applications)").map((column) => String(column.name)));
+    const columns: Array<[string, string]> = [
+      ["created_at", "TEXT"],
+      ["updated_at", "TEXT"]
+    ];
+    for (const [name, definition] of columns) {
+      if (!existing.has(name)) this.db.run(`ALTER TABLE applications ADD COLUMN ${name} ${definition}`);
+    }
+    this.db.run("UPDATE applications SET created_at = COALESCE(created_at, CURRENT_TIMESTAMP), updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP)");
   }
 
   save(): void {

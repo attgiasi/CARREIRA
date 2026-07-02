@@ -1,14 +1,16 @@
 const app = document.querySelector("#app");
 const tabs = [
-  ["dashboard", "Dashboard"],
+  ["dashboard", "Painel"],
   ["jobs", "Vagas"],
-  ["informal", "Freelas e Bicos"],
   ["applications", "Candidaturas"],
+  ["resume", "Meu Currículo"],
+  ["informal", "Freelas e Bicos"],
   ["settings", "Configurações"],
   ["logs", "Logs"]
 ];
 
-document.querySelector("nav").innerHTML = tabs.map(([id, label]) => `<button data-tab="${id}">${label}</button>`).join("");
+document.documentElement.dataset.theme = localStorage.getItem("careerHunterTheme") || "light";
+document.querySelector("nav").innerHTML = `${tabs.map(([id, label]) => `<button data-tab="${id}">${label}</button>`).join("")}<button id="themeToggle" title="Alternar modo escuro">Modo escuro</button>`;
 
 async function json(url) {
   const response = await fetch(url);
@@ -40,7 +42,47 @@ function checkboxGrid(title, group, values) {
 }
 
 function labelize(key) {
-  return key
+  const labels = {
+    googleJobsSearch: "Busca Google",
+    rhAgenciesCuritiba: "Agências de RH em Curitiba",
+    jobs99: "99jobs",
+    gmailAlerts: "Alertas do Gmail",
+    manualUrlImporter: "Links manuais",
+    companyHunter: "Empresas-alvo",
+    companyCareerPages: "Páginas de carreira",
+    linkedinEmailAlertsOnly: "LinkedIn por e-mail",
+    indeedEmailAlertsOnly: "Indeed por e-mail",
+    cathoEmailAlertsOnly: "Catho por e-mail",
+    infojobsEmailAlertsOnly: "InfoJobs por e-mail",
+    informalWorkHunter: "Freelas e bicos",
+    homeOffice: "Home office",
+    hibrido: "Híbrido",
+    presencial: "Presencial",
+    comViagem: "Com viagem",
+    semViagem: "Sem viagem",
+    campoExterno: "Campo externo",
+    comMudancaCidade: "Com mudança de cidade",
+    semMudancaCidade: "Sem mudança de cidade",
+    operacional: "Operacional",
+    assistente: "Assistente",
+    tecnico: "Técnico",
+    analista: "Analista",
+    especialista: "Especialista",
+    supervisao: "Supervisão",
+    coordenacao: "Coordenação",
+    gestao: "Gestão",
+    gerencia: "Gerência",
+    consultoria: "Consultoria",
+    freelancerEventos: "Freelancer/eventos",
+    clt: "CLT",
+    pj: "PJ",
+    temporario: "Temporário",
+    freelancer: "Freelancer",
+    contrato: "Contrato",
+    intermitente: "Intermitente",
+    estagio: "Estágio"
+  };
+  return labels[key] || key
     .replace(/([A-Z])/g, " $1")
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase())
@@ -131,6 +173,25 @@ function sourceBadge(source) {
   return `<span class="source-badge">${escapeHtml(source || "Fonte")}</span>`;
 }
 
+function formatDate(value) {
+  if (!value) return "Ainda não enviado";
+  const date = new Date(String(value).replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
+async function runScanAndRefresh(target = "dashboard") {
+  toast("Buscando novas vagas. Isso pode levar alguns segundos...", "info");
+  const response = await fetch("/api/scan", { method: "POST" });
+  const data = await response.json();
+  if (!response.ok || !data.ok) {
+    toast(`Erro ao buscar vagas: ${escapeHtml(data.error || "falha desconhecida")}`, "error");
+    return;
+  }
+  toast("Busca concluída. O radar foi atualizado.", "success");
+  await load(target);
+}
+
 async function dashboard() {
   const summary = await json("/api/summary");
   app.innerHTML = `<div class="hero-panel">
@@ -140,6 +201,7 @@ async function dashboard() {
       <p>Busca ativa, triagem por risco, materiais personalizados e candidatura assistida com controle de aprovação.</p>
     </div>
     <div class="hero-actions">
+      <button id="scanNow" class="primary">Buscar vagas</button>
       <button data-tab="jobs" class="primary">Ver vagas</button>
       <button data-tab="applications">Ver candidaturas</button>
     </div>
@@ -177,6 +239,7 @@ async function dashboard() {
     <h2>Status do processo</h2>
     <p>Se uma candidatura não virar “Candidatado”, o painel agora mostra o motivo: precisa aprovação, precisa vaga real, falta canal oficial ou está pronta para formulário assistido.</p>
   </section>`;
+  document.querySelector("#scanNow").onclick = () => runScanAndRefresh("dashboard");
 }
 
 async function jobs() {
@@ -188,13 +251,14 @@ async function jobs() {
         <p>Selecione vagas reais ou promissoras para preparar currículo, carta e candidatura.</p>
       </div>
       <div class="toolbar-actions">
+        <button id="scanJobs">Buscar vagas</button>
         <button id="selectAllJobs">Selecionar todas</button>
         <button id="clearJobs">Limpar seleção</button>
-        <button id="prepareSelectedJobs" class="primary">Preparar candidatura</button>
+        <button id="prepareSelectedJobs" class="primary">Mover para candidaturas</button>
       </div>
     </div>
     <div id="jobActionResult" class="note hidden"></div>
-    <table class="data-table"><thead><tr>
+    ${rows.length ? `<table class="data-table"><thead><tr>
       <th></th>
       <th>Nome da vaga</th>
       <th>Salário</th>
@@ -218,6 +282,11 @@ async function jobs() {
       <td>${stateChip(row)}</td>
       <td><button data-detail="${row.id}">Detalhes</button>${row.url ? `<a class="action" href="${row.url}" target="_blank" rel="noreferrer">Abrir fonte</a>` : ""}</td>
     </tr>`).join("")}</tbody></table>
+    ` : `<div class="empty-state">
+      <h3>Nenhuma vaga nova na fila</h3>
+      <p>As vagas que você moveu para candidatura saem daqui para evitar repetição. Clique em <strong>Buscar vagas</strong> para rodar novas pesquisas.</p>
+      <button id="scanJobsEmpty" class="primary">Buscar vagas</button>
+    </div>`}
   </section>`;
 
   const selectedJobIds = () => [...document.querySelectorAll(".job-check:checked")].map((input) => Number(input.value));
@@ -226,8 +295,11 @@ async function jobs() {
     resultBox.classList.remove("hidden");
     resultBox.innerHTML = message;
   };
+  document.querySelector("#scanJobs").onclick = () => runScanAndRefresh("jobs");
   document.querySelector("#selectAllJobs").onclick = () => document.querySelectorAll(".job-check").forEach((input) => input.checked = true);
   document.querySelector("#clearJobs").onclick = () => document.querySelectorAll(".job-check").forEach((input) => input.checked = false);
+  const emptyScan = document.querySelector("#scanJobsEmpty");
+  if (emptyScan) emptyScan.onclick = () => runScanAndRefresh("jobs");
   document.querySelector("#prepareSelectedJobs").onclick = async () => {
     const ids = selectedJobIds();
     if (!ids.length) return showResult("Selecione pelo menos uma vaga.");
@@ -325,6 +397,7 @@ async function applications(initialMessage = "") {
       <th>Fonte</th>
       <th>Nota</th>
       <th>Status</th>
+      <th>Datas</th>
       <th>Currículo/Carta</th>
       <th>Ação</th>
     </tr></thead>
@@ -338,6 +411,7 @@ async function applications(initialMessage = "") {
       <td>${sourceBadge(row.source)}<br><small>${row.url ? "tem link" : "sem link"}</small></td>
       <td>${scoreBadge(row)}</td>
       <td>${stateChip(row)}<br><small>${escapeHtml(row.application_status || "-")}</small></td>
+      <td><small>Preparada: ${formatDate(row.created_at)}</small><br><small>Última ação: ${formatDate(row.updated_at)}</small><br><small>Candidatado: ${formatDate(row.applied_at)}</small></td>
       <td><small>CV: ${escapeHtml(row.generated_resume_path || "")}</small><br><small>Carta: ${escapeHtml(row.cover_letter_path || "")}</small></td>
       <td>${row.url ? `<a class="action" href="${row.url}" target="_blank" rel="noreferrer">Abrir fonte</a>` : ""}${row.job_id ? `<button data-detail="${row.job_id}">Detalhes</button>` : ""}</td>
     </tr>`).join("")}</tbody></table>
@@ -379,6 +453,59 @@ async function applications(initialMessage = "") {
     toast(response.ok ? "Candidatura assistida processada. Veja os detalhes no painel." : message, response.ok ? "info" : "error");
     await applications(message);
   };
+}
+
+async function resumePage() {
+  const data = await json("/api/career-profile");
+  const profile = data.profile;
+  const trackEntries = Object.entries(data.careerTracks || {}).filter(([, active]) => active);
+  app.innerHTML = `<div class="hero-panel">
+    <div>
+      <span class="eyebrow">Perfil para candidaturas</span>
+      <h2>${escapeHtml(profile.name)}</h2>
+      <p>${escapeHtml(profile.summary)}</p>
+    </div>
+    <div class="hero-actions">
+      <button data-tab="settings" class="primary">Editar perfil</button>
+      <button data-tab="applications">Ver candidaturas</button>
+    </div>
+  </div>
+
+  <div class="two-column">
+    <section>
+      <h2>Dados principais</h2>
+      <div class="profile-grid">
+        <div><span>Local</span><strong>${escapeHtml(profile.city)}/${escapeHtml(profile.state)}</strong></div>
+        <div><span>E-mail</span><strong>${escapeHtml(profile.email)}</strong></div>
+        <div><span>Telefone</span><strong>${escapeHtml(profile.phone || "Não informado")}</strong></div>
+        <div><span>LinkedIn</span><strong>${escapeHtml(profile.linkedin || "Não informado")}</strong></div>
+      </div>
+      <h3>Formação</h3>
+      <ul>${(profile.education?.degrees || []).map((degree) => `<li>${escapeHtml(degree)}</li>`).join("")}</ul>
+      <h3>Trilhas ativas</h3>
+      <div class="pill-cloud">${trackEntries.map(([track]) => `<span>${labelize(track)}</span>`).join("")}</div>
+    </section>
+
+    <section>
+      <h2>Currículos disponíveis</h2>
+      <div class="stack-list">${(data.resumes || []).map((file) => `<div class="stack-item"><strong>${escapeHtml(file)}</strong><span class="state-chip success">Detectado</span></div>`).join("") || "<p>Nenhum currículo encontrado na pasta resumes.</p>"}</div>
+      <h3>Status da IA</h3>
+      <div class="stack-item">
+        <div><strong>${data.ai.openaiConfigured ? "OpenAI configurada" : "OpenAI aguardando chave"}</strong><small>Modelo: ${escapeHtml(data.ai.model)}</small></div>
+        <span class="state-chip ${data.ai.openaiConfigured ? "success" : "warning"}">${data.ai.openaiConfigured ? "Ativa" : "Configurar .env"}</span>
+      </div>
+    </section>
+  </div>
+
+  <section>
+    <h2>Cargos-alvo usados pela IA</h2>
+    <div class="pill-cloud">${(data.targetRoles || []).map((role) => `<span>${escapeHtml(role)}</span>`).join("")}</div>
+  </section>
+
+  <section class="notice-panel">
+    <h2>Como a IA usa estes dados</h2>
+    <p>Ela seleciona o currículo mais próximo da vaga, gera carta e respostas com base no seu perfil real, sem inventar cargo, formação, idioma, certificação ou experiência.</p>
+  </section>`;
 }
 
 async function settings() {
@@ -575,14 +702,22 @@ async function load(tab) {
   if (tab === "jobs") return jobs();
   if (tab === "informal") return informal();
   if (tab === "applications") return applications();
+  if (tab === "resume") return resumePage();
   if (tab === "settings") return settings();
   if (tab === "logs") return logs();
   return dashboard();
 }
 
 document.querySelector("nav").addEventListener("click", (event) => {
-  if (event.target.matches("button")) load(event.target.dataset.tab);
+  if (event.target.matches("button[data-tab]")) load(event.target.dataset.tab);
 });
+document.querySelector("#themeToggle").addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  localStorage.setItem("careerHunterTheme", next);
+  document.querySelector("#themeToggle").textContent = next === "dark" ? "Modo claro" : "Modo escuro";
+});
+document.querySelector("#themeToggle").textContent = document.documentElement.dataset.theme === "dark" ? "Modo claro" : "Modo escuro";
 app.addEventListener("click", (event) => {
   if (event.target.matches("[data-detail]")) jobDetail(event.target.dataset.detail);
   if (event.target.matches("[data-tab]")) load(event.target.dataset.tab);

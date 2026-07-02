@@ -228,6 +228,10 @@ O workflow `.github/workflows/career-hunter.yml` roda manualmente ou a cada 4 ho
 
 Configure segredos no GitHub Actions. Nunca coloque tokens no repositório.
 
+Quando roda no GitHub, o agente executa em servidor temporário do Actions: instala dependências, faz scan, pontua, prepara candidaturas e salva artefatos com banco, logs e relatórios. O painel web local não fica “hospedado” pelo GitHub Pages, porque ele depende de Node.js, Express e SQLite. Para painel online contínuo, use um serviço com Node.js persistente, como Render, Railway, Fly.io ou VPS.
+
+O GitHub Actions serve para automação agendada e histórico por artefatos; o painel em `localhost:8788` serve para operação local com aprovação manual.
+
 ## Expansão de conectores
 
 Os conectores estão em `src/modules/sources/`. A regra é simples:
