@@ -338,6 +338,45 @@ section,
   margin-bottom: 14px;
 }
 
+.flow-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.flow-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  min-height: 240px;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow-soft);
+}
+
+.flow-step h3 {
+  margin: 8px 0 6px;
+}
+
+.flow-step p {
+  min-height: 88px;
+  margin-bottom: 12px;
+}
+
+.flow-index {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: var(--surface-strong);
+  color: #ffffff;
+  font-weight: 900;
+}
+
 .three-column {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -510,6 +549,30 @@ section,
 
 .page-panel {
   overflow-x: auto;
+}
+
+.real-link-box {
+  display: grid;
+  grid-template-columns: minmax(260px, .8fr) minmax(320px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.real-link-box strong,
+.real-link-box label,
+.profile-actions button {
+  color: var(--ink);
+}
+
+.real-link-box span:last-child {
+  align-self: center;
+  color: var(--muted);
+  font-weight: 700;
 }
 
 .filter-studio {
@@ -910,6 +973,16 @@ pre {
   box-shadow: inset 4px 0 0 var(--accent);
 }
 
+.profile-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.profile-actions button {
+  flex: 1 1 130px;
+}
+
 .memory-capture {
   margin-top: 12px;
   display: grid;
@@ -965,7 +1038,8 @@ pre {
   .command-hero,
   .command-grid,
   .three-column,
-  .two-column {
+  .two-column,
+  .flow-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1006,8 +1080,13 @@ pre {
   }
 
   .hero-actions,
-  .toolbar-actions {
+  .toolbar-actions,
+  .real-link-box {
     justify-content: flex-start;
+  }
+
+  .real-link-box {
+    grid-template-columns: 1fr;
   }
 
   .command-hero {

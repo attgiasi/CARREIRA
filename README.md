@@ -7,7 +7,7 @@ O objetivo não é sair se candidatando em massa. O agente funciona como assiste
 ## O que ele faz
 
 - Lê alertas de vagas do Gmail quando a API estiver configurada.
-- Importa links manuais em `data/manual-urls.txt`.
+- Importa links reais pelo painel ou por `data/manual-urls.txt`.
 - Importa mensagens copiadas/exportadas de grupos do WhatsApp em `data/whatsapp-vagas.txt`.
 - Mantém conectores preparados para Greenhouse, Lever, Gupy, RSS e páginas de carreira.
 - Cria buscas direcionadas no Google, SINE/Emprega Curitiba, InfoJobs, 99jobs e agências de RH em Curitiba.
@@ -22,10 +22,11 @@ O objetivo não é sair se candidatando em massa. O agente funciona como assiste
 - Gera carta de apresentação.
 - Coloca candidatura em fila de aprovação.
 - Gera resumo diário e radar semanal.
-- Mostra painel local em `http://localhost:8788` com dashboard, filtros, colunas configuráveis, currículo e configuração visual.
+- Mostra painel local em `http://localhost:8788` com dashboard, fluxo, filtros, colunas configuráveis, currículo e configuração visual.
 - Mantém perfis de candidatura para pessoas diferentes.
 - Pergunta dados ausentes, salva na memória do perfil e reutiliza nas próximas candidaturas.
 - Tem modo cirúrgico para revisar canal, dados, risco, fonte e pacote de preenchimento antes do envio.
+- Tem `Modo TUDO` opcional para rodar, nas candidaturas selecionadas, todas as ações permitidas pelas suas configurações.
 - Inclui botão para candidatar novamente em vagas já trabalhadas.
 - Registra auditoria em JSONL com dados sensíveis mascarados.
 
@@ -157,13 +158,15 @@ Fontes incluídas:
 - agências de RH em Curitiba;
 - páginas diretas cadastradas em `data/rh-agencies-curitiba.json`.
 
-O agente não faz scraping agressivo dessas plataformas. Quando o resultado for uma busca assistida, abra o link, escolha a vaga real e cole o link específico em `data/manual-urls.txt` para análise detalhada. No LinkedIn, o agente só encontra oportunidades; você abre e se candidata manualmente.
+O agente não faz scraping agressivo dessas plataformas. Quando o resultado for uma busca assistida, abra o link, escolha a vaga real e cole o link específico no campo **Importar link real** do painel para análise detalhada. No LinkedIn, o agente abre busca direta no LinkedIn Jobs, mas a candidatura continua manual pela sua conta.
 
-## Perfis, memória e modo cirúrgico
+## Perfis, memória e modos de candidatura
 
-Use a aba `Perfis` para criar pessoas diferentes, cada uma com dados, currículo e memória própria.
+Use a aba `Perfis` para criar ou excluir pessoas diferentes, cada uma com dados, currículo e memória própria.
 
 Na aba `Candidaturas`, o botão `Modo cirúrgico` tenta montar o pacote de preenchimento da vaga. Se faltar telefone, disponibilidade, pretensão salarial ou outra resposta recorrente, o painel pergunta e salva em `answer_memory` para preencher automaticamente nas próximas vagas do mesmo perfil.
+
+O `Modo TUDO` precisa ser ativado em `Configurações > Segurança`. Ele aprova e roda a IA nas candidaturas selecionadas usando todas as permissões ligadas, mas continua bloqueando LinkedIn automático, CAPTCHA, site sem canal oficial, dados inventados e vagas que ainda são só busca assistida.
 
 O botão `Candidatar novamente` recoloca uma candidatura na fila sem apagar o histórico anterior.
 
@@ -203,13 +206,13 @@ npm run lint
 
 1. Configure `.env`.
 2. Ajuste `agent-settings.json`.
-3. Adicione links manuais em `data/manual-urls.txt`.
-4. Cole mensagens de grupos de vagas em `data/whatsapp-vagas.txt`, se quiser monitorar WhatsApp de forma segura.
-5. Rode `npm run scan`.
-6. Rode `npm run prepare`.
-7. Abra `npm run dashboard`.
-8. Revise vagas, fontes, riscos, cartas e currículos gerados.
-9. Aprove manualmente antes de enviar qualquer candidatura.
+3. Abra `npm run dashboard`.
+4. Use a aba `Fluxo` para entender em qual etapa cada oportunidade está.
+5. Rode `Buscar vagas`.
+6. Em `Vagas`, revise fontes, filtros, riscos e mova as boas para `Candidaturas`.
+7. Quando uma fonte assistida abrir uma vaga individual, cole o link oficial em **Importar link real**.
+8. Em `Candidaturas`, aprove, rode `Modo cirúrgico` ou `Modo TUDO` e acompanhe o status.
+9. Cole mensagens de grupos de vagas em `data/whatsapp-vagas.txt`, se quiser monitorar WhatsApp de forma segura.
 
 ## WhatsApp
 

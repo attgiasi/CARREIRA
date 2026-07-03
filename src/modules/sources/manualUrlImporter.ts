@@ -9,14 +9,21 @@ export function importManualUrls(): RawJob[] {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => Boolean(line) && !line.startsWith("#"))
-    .map((url, index) => ({
-      externalId: `manual-${index}-${url}`,
-      title: "Vaga importada manualmente",
-      company: "Empresa a confirmar",
-      location: "A confirmar",
-      source: "manual",
-      url,
-      description: `Link importado manualmente para análise: ${url}`,
-      raw: { url }
-    }));
+    .flatMap((url) => {
+      try {
+        const host = new URL(url).hostname.replace(/^www\./, "");
+        return [{
+          externalId: `manual-${url}`,
+          title: `Vaga real importada: ${host}`,
+          company: "Empresa a confirmar",
+          location: "A confirmar",
+          source: "manual",
+          url,
+          description: `Link importado manualmente para análise: ${url}`,
+          raw: { url }
+        }];
+      } catch {
+        return [];
+      }
+    });
 }

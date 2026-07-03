@@ -91,20 +91,30 @@ const boardConfig: Record<Board, { label: string; source: string; domain: string
   }
 };
 
+function directBoardSearchUrl(board: Board, role: string, location: string, googleQuery: string): string {
+  const keywords = encodeURIComponent(role);
+  const place = encodeURIComponent(location);
+  if (board === "linkedinSearch") return `https://www.linkedin.com/jobs/search/?keywords=${keywords}&location=${place}`;
+  if (board === "indeedSearch") return `https://br.indeed.com/jobs?q=${keywords}&l=${place}`;
+  if (board === "vagasCom") return `https://www.vagas.com.br/vagas-de-${keywords}?q=${keywords}`;
+  return googleSearchUrl(googleQuery);
+}
+
 export function fetchJobBoardSearches(settings: AgentSettings, board: Board): RawJob[] {
   const config = boardConfig[board];
   const pairs = limitedSearchPairs(settings, 18);
   const results = pairs.map(({ role, location }) => {
     const query = `site:(${config.domain}) "${role}" "${location}" vaga emprego`;
+    const url = directBoardSearchUrl(board, role, location, query);
     return {
       externalId: `${board}-${role}-${location}`,
       title: `${config.label}: ${role} em ${location}`,
       company: config.label,
       location,
       source: config.source,
-      url: googleSearchUrl(query),
-      description: `Busca assistida em ${config.label} para ${role} em ${location}. Abra o link para ver resultados atuais e depois importe vagas específicas pelo link manual.`,
-      raw: { role, location, board, directUrl: config.baseUrl, query }
+      url,
+      description: `Busca assistida em ${config.label} para ${role} em ${location}. Abra o link, escolha a vaga específica e importe o link real pelo painel para candidatar com precisão.`,
+      raw: { role, location, board, directUrl: config.baseUrl, query, searchUrl: url }
     };
   });
   audit("jobBoardsConnector", "scan", `Buscas ${config.label} geradas: ${results.length}.`);

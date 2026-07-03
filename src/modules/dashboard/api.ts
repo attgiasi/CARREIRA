@@ -43,6 +43,27 @@ function writeEnvValues(values: Record<string, string | undefined>): void {
   fs.writeFileSync(envPath, `${next.join("\n")}\n`, "utf8");
 }
 
+function parseHttpUrl(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  const parsed = new URL(raw);
+  if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Use um link http ou https.");
+  return parsed.toString();
+}
+
+function manualJobFromUrl(url: string) {
+  const host = new URL(url).hostname.replace(/^www\./, "");
+  return {
+    externalId: `manual-${url}`,
+    title: `Vaga real importada: ${host}`,
+    company: "Empresa a confirmar",
+    location: "A confirmar",
+    source: "manual",
+    url,
+    description: `Link oficial importado pelo painel para candidatura real: ${url}`,
+    raw: { url, importedAt: new Date().toISOString(), importedFrom: "dashboard" }
+  };
+}
+
 function envStatus() {
   const envMap = readEnvMap();
   return {
@@ -125,6 +146,116 @@ function applicationStatusForDecision(status: string): string {
     auto_apply_pronto: "Candidatura automática pronta"
   };
   return labels[status] ?? status;
+}
+
+async function runAutomationForApplications(ids: number[], mode: string, approveBeforeRun = false) {
+  const db = await CareerDatabase.open();
+  const settings = loadSettings();
+  const profile = getActiveCandidateProfile(db);
+  const memory = db.query<MemoryAnswer>(
+    "SELECT question_key, answer_text FROM answer_memory WHERE user_profile_id = ?",
+    [profile.id]
+  );
+  const placeholders = ids.map(() => "?").join(",");
+
+  if (approveBeforeRun) {
+    db.run(
+      `UPDATE applications
+       SET approval_status = ?, application_status = ?, user_profile_id = COALESCE(user_profile_id, ?),
+           updated_at = CURRENT_TIMESTAMP,
+           notes = COALESCE(notes, '') || ?
+       WHERE id IN (${placeholders})`,
+      [
+        "aprovado_pelo_usuario",
+        "Aprovada pelo Modo TUDO",
+        profile.id,
+        `\nModo TUDO autorizado pelo usuário em ${new Date().toISOString()}.`,
+        ...ids
+      ]
+    );
+  }
+
+  const rows = db.query<Record<string, unknown>>(`
+    SELECT
+      a.*,
+      j.title,
+      j.company,
+      j.source,
+      j.url,
+      j.salary,
+      j.location,
+      j.work_model,
+      j.description,
+      j.driver_license_required,
+      j.own_vehicle_required
+    FROM applications a
+    LEFT JOIN jobs j ON j.id = a.job_id
+    WHERE a.id IN (${placeholders})
+  `, ids);
+
+  const actions: Array<Record<string, unknown>> = [];
+  for (const row of rows) {
+    const id = Number(row.id);
+    if (String(row.approval_status ?? "") !== "aprovado_pelo_usuario") {
+      actions.push({
+        id,
+        status: "bloqueada",
+        message: "A candidatura precisa ser aprovada antes do modo cirúrgico.",
+        nextStep: "Clique em Aprovar e rode o modo cirúrgico novamente."
+      });
+      continue;
+    }
+    const decision = decideAutomation(row, profile, memory, settings);
+    const applicationStatus = applicationStatusForDecision(decision.status);
+    db.run(
+      `UPDATE applications
+       SET application_status = ?, automation_mode = ?, user_profile_id = ?, last_attempt_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ?
+       WHERE id = ?`,
+      [
+        applicationStatus,
+        mode,
+        profile.id,
+        `\n${mode}: ${decision.status}. ${decision.message}`,
+        id
+      ]
+    );
+    db.run(
+      `INSERT INTO application_attempts (
+        application_id, user_profile_id, mode, status, result_message, missing_questions_json, filled_fields_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        profile.id,
+        mode,
+        decision.status,
+        decision.message,
+        JSON.stringify(decision.questions),
+        JSON.stringify(decision.filledFields)
+      ]
+    );
+    for (const key of Object.keys(decision.filledFields)) {
+      db.run(
+        "UPDATE answer_memory SET usage_count = usage_count + 1, last_used_at = CURRENT_TIMESTAMP WHERE user_profile_id = ? AND question_key = ?",
+        [profile.id, key]
+      );
+    }
+    actions.push({
+      id,
+      profileId: profile.id,
+      profileName: profile.name,
+      status: decision.status,
+      message: decision.message,
+      nextStep: decision.nextStep,
+      questions: decision.questions,
+      filledFields: decision.filledFields,
+      canAutofill: decision.canAutofill,
+      canSubmitAutomatically: decision.canSubmitAutomatically,
+      url: row.url
+    });
+  }
+
+  return { actions, profile };
 }
 
 apiRouter.get("/health", (_req, res) => {
@@ -286,6 +417,34 @@ apiRouter.post("/profiles/:id/activate", async (req, res) => {
   res.json({ ok: true });
 });
 
+apiRouter.delete("/profiles/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!id) {
+    res.status(400).json({ error: "Perfil inválido." });
+    return;
+  }
+  const db = await CareerDatabase.open();
+  ensureDefaultCandidateProfile(db);
+  const count = Number(db.query("SELECT COUNT(*) as total FROM candidate_profiles")[0]?.total ?? 0);
+  if (count <= 1) {
+    res.status(400).json({ error: "Crie ou ative outro perfil antes de excluir o último perfil." });
+    return;
+  }
+  const profile = db.query<Record<string, unknown>>("SELECT * FROM candidate_profiles WHERE id = ? LIMIT 1", [id])[0];
+  if (!profile) {
+    res.status(404).json({ error: "Perfil não encontrado." });
+    return;
+  }
+  db.run("UPDATE applications SET user_profile_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_profile_id = ?", [id]);
+  db.run("DELETE FROM answer_memory WHERE user_profile_id = ?", [id]);
+  db.run("DELETE FROM candidate_profiles WHERE id = ?", [id]);
+  if (Number(profile.is_active) === 1) {
+    const next = db.query<Record<string, unknown>>("SELECT id FROM candidate_profiles ORDER BY id ASC LIMIT 1")[0];
+    if (next) db.run("UPDATE candidate_profiles SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [Number(next.id)]);
+  }
+  res.json({ ok: true, deleted: id });
+});
+
 apiRouter.get("/answer-memory", async (req, res) => {
   const db = await CareerDatabase.open();
   const active = getActiveCandidateProfile(db);
@@ -368,6 +527,38 @@ apiRouter.post("/scan", async (_req, res) => {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ ok: false, error: message });
   }
+});
+
+apiRouter.post("/manual-urls", async (req, res) => {
+  let url = "";
+  try {
+    url = parseHttpUrl(req.body?.url);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Link inválido.";
+    res.status(400).json({ error: `Link inválido. ${message}` });
+    return;
+  }
+
+  const file = path.resolve(process.cwd(), "data/manual-urls.txt");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const existing = fs.existsSync(file)
+    ? fs.readFileSync(file, "utf8").split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+    : [];
+  const alreadyExists = existing.includes(url);
+  if (!alreadyExists) fs.appendFileSync(file, `${url}\n`, "utf8");
+
+  const settings = loadSettings();
+  const db = await CareerDatabase.open();
+  const job = normalizeJob(manualJobFromUrl(url), settings);
+  db.insertJob(job);
+  const saved = db.query<Record<string, unknown>>("SELECT id, title, source, url FROM jobs WHERE external_id = ? LIMIT 1", [job.externalId])[0];
+  res.json({
+    ok: true,
+    url,
+    duplicate: alreadyExists,
+    job: saved,
+    message: alreadyExists ? "Link já estava importado." : "Link real importado e colocado na fila de vagas."
+  });
 });
 
 apiRouter.post("/jobs/prepare-selected", async (req, res) => {
@@ -540,94 +731,23 @@ apiRouter.post("/applications/auto-apply", async (req, res) => {
     res.status(400).json({ error: "Nenhuma candidatura selecionada." });
     return;
   }
-  const db = await CareerDatabase.open();
-  const settings = loadSettings();
-  const profile = getActiveCandidateProfile(db);
-  const memory = db.query<MemoryAnswer>(
-    "SELECT question_key, answer_text FROM answer_memory WHERE user_profile_id = ?",
-    [profile.id]
-  );
-  const placeholders = ids.map(() => "?").join(",");
-  const rows = db.query<Record<string, unknown>>(`
-    SELECT
-      a.*,
-      j.title,
-      j.company,
-      j.source,
-      j.url,
-      j.salary,
-      j.location,
-      j.work_model,
-      j.description,
-      j.driver_license_required,
-      j.own_vehicle_required
-    FROM applications a
-    LEFT JOIN jobs j ON j.id = a.job_id
-    WHERE a.id IN (${placeholders})
-  `, ids);
+  const result = await runAutomationForApplications(ids, "cirurgico_alto_desempenho");
+  res.json({ ok: true, modeLabel: "Modo cirúrgico executado", ...result });
+});
 
-  const actions: Array<Record<string, unknown>> = [];
-  for (const row of rows) {
-    const id = Number(row.id);
-    if (String(row.approval_status ?? "") !== "aprovado_pelo_usuario") {
-      actions.push({
-        id,
-        status: "bloqueada",
-        message: "A candidatura precisa ser aprovada antes do modo cirúrgico.",
-        nextStep: "Clique em Aprovar e rode o modo cirúrgico novamente."
-      });
-      continue;
-    }
-    const decision = decideAutomation(row, profile, memory, settings);
-    const applicationStatus = applicationStatusForDecision(decision.status);
-    db.run(
-      `UPDATE applications
-       SET application_status = ?, automation_mode = ?, user_profile_id = ?, last_attempt_at = CURRENT_TIMESTAMP,
-           updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ?
-       WHERE id = ?`,
-      [
-        applicationStatus,
-        "cirurgico_alto_desempenho",
-        profile.id,
-        `\nModo cirúrgico: ${decision.status}. ${decision.message}`,
-        id
-      ]
-    );
-    db.run(
-      `INSERT INTO application_attempts (
-        application_id, user_profile_id, mode, status, result_message, missing_questions_json, filled_fields_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        id,
-        profile.id,
-        "cirurgico_alto_desempenho",
-        decision.status,
-        decision.message,
-        JSON.stringify(decision.questions),
-        JSON.stringify(decision.filledFields)
-      ]
-    );
-    for (const key of Object.keys(decision.filledFields)) {
-      db.run(
-        "UPDATE answer_memory SET usage_count = usage_count + 1, last_used_at = CURRENT_TIMESTAMP WHERE user_profile_id = ? AND question_key = ?",
-        [profile.id, key]
-      );
-    }
-    actions.push({
-      id,
-      profileId: profile.id,
-      profileName: profile.name,
-      status: decision.status,
-      message: decision.message,
-      nextStep: decision.nextStep,
-      questions: decision.questions,
-      filledFields: decision.filledFields,
-      canAutofill: decision.canAutofill,
-      canSubmitAutomatically: decision.canSubmitAutomatically,
-      url: row.url
-    });
+apiRouter.post("/applications/everything-mode", async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+  if (!ids.length) {
+    res.status(400).json({ error: "Nenhuma candidatura selecionada." });
+    return;
   }
-  res.json({ ok: true, actions, profile });
+  const settings = loadSettings();
+  if (!settings.applications.everythingMode) {
+    res.status(400).json({ error: "Ative o Modo TUDO em Configurações > Segurança antes de usar este botão." });
+    return;
+  }
+  const result = await runAutomationForApplications(ids, "modo_tudo_configurado", true);
+  res.json({ ok: true, everythingMode: true, modeLabel: "Modo TUDO executado", ...result });
 });
 
 apiRouter.post("/applications/assisted-apply", async (req, res) => {
@@ -678,7 +798,7 @@ apiRouter.post("/applications/assisted-apply", async (req, res) => {
         id,
         status: "precisa_vaga_real",
         message: "Esta entrada ainda é uma busca/fonte assistida, não um formulário real de candidatura.",
-        nextStep: "Abra a fonte, escolha uma vaga real, copie o link específico e cole em data/manual-urls.txt para o agente preparar a candidatura real.",
+        nextStep: "Abra a fonte, escolha uma vaga real, copie o link específico e cole no campo Importar link real do painel.",
         url
       });
       continue;

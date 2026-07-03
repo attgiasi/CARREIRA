@@ -238,6 +238,7 @@
   "applications": {
     "prepareApplications": true,
     "createGmailDrafts": true,
+    "everythingMode": false,
     "autoApply": false,
     "autoApplyWhenAllowed": true,
     "autoFillFormsWhenAllowed": true,

@@ -3,6 +3,7 @@ const header = document.querySelector("header");
 
 const tabs = [
   ["dashboard", "Painel"],
+  ["flow", "Fluxo"],
   ["jobs", "Vagas"],
   ["applications", "Candidaturas"],
   ["profiles", "Perfis"],
@@ -194,6 +195,7 @@ function optionDescription(key) {
     glassdoorSearch: "Busca vagas e sinais de reputação via Glassdoor.",
     empregosComBr: "Inclui Empregos.com.br como fonte adicional.",
     autoApply: "Permite tentar envio automático apenas em canais permitidos e configurados.",
+    everythingMode: "Executa, para as candidaturas selecionadas, tudo que estiver permitido nas suas configurações.",
     autoApplyWhenAllowed: "Aciona automação somente quando a plataforma permite e os dados estão completos.",
     autoFillFormsWhenAllowed: "Prepara os campos para preenchimento de formulário quando houver canal oficial.",
     askAndRememberMissingFields: "Quando faltar uma resposta, o agente pergunta e salva para as próximas vagas.",
@@ -377,6 +379,47 @@ async function runScanAndRefresh(target = "dashboard") {
   }
 }
 
+function realLinkImporter(idPrefix, onImported) {
+  return `<div class="real-link-box">
+    <div>
+      <span class="eyebrow">Vaga real</span>
+      <strong>Colar link oficial de candidatura</strong>
+      <small>Use quando uma fonte assistida abrir uma vaga individual com formulario, e-mail ou pagina oficial.</small>
+    </div>
+    <label>Link da vaga<input id="${idPrefix}RealJobUrl" placeholder="https://site-da-vaga.com/vaga/oficial"></label>
+    <button id="${idPrefix}ImportRealJob" class="primary">Importar link real</button>
+    <span id="${idPrefix}RealJobStatus"></span>
+  </div>`;
+}
+
+function bindRealLinkImporter(idPrefix, onImported = () => load("jobs")) {
+  const button = document.querySelector(`#${idPrefix}ImportRealJob`);
+  if (!button) return;
+  button.onclick = async () => {
+    const input = document.querySelector(`#${idPrefix}RealJobUrl`);
+    const status = document.querySelector(`#${idPrefix}RealJobStatus`);
+    const url = input.value.trim();
+    if (!url) {
+      status.textContent = "Cole o link real da vaga antes de importar.";
+      return;
+    }
+    try {
+      const result = await json("/api/manual-urls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url })
+      });
+      status.textContent = result.message || "Link importado.";
+      toast("Link real importado para a fila de vagas.", "success");
+      input.value = "";
+      await onImported(result);
+    } catch (error) {
+      status.textContent = error.message;
+      toast(`Erro ao importar link: ${escapeHtml(error.message)}`, "error");
+    }
+  };
+}
+
 async function dashboard() {
   const [summary, profile] = await Promise.all([json("/api/summary"), json("/api/career-profile")]);
   const actions = [
@@ -395,6 +438,7 @@ async function dashboard() {
     </div>
     <div class="hero-actions">
       <button id="scanNow" class="primary">Buscar vagas</button>
+      <button data-tab="flow">Fluxo</button>
       <button data-tab="jobs">Vagas</button>
       <button data-tab="applications">Candidaturas</button>
       <button data-tab="profiles">Perfis</button>
@@ -478,6 +522,68 @@ function sourceBar(row, total) {
   return `<div class="source-row"><div><strong>${escapeHtml(row.source)}</strong><span>${row.total} vaga(s)</span></div><div class="bar"><span style="width:${width}%"></span></div></div>`;
 }
 
+function flowStep(number, title, count, text, actionLabel, tab, tone = "info") {
+  return `<div class="flow-step">
+    <div class="flow-index">${number}</div>
+    <div>
+      <span class="state-chip ${tone}">${count ?? 0}</span>
+      <h3>${escapeHtml(title)}</h3>
+      <p>${escapeHtml(text)}</p>
+      <button data-tab="${tab}">${escapeHtml(actionLabel)}</button>
+    </div>
+  </div>`;
+}
+
+async function flowPage() {
+  const summary = await json("/api/summary");
+  const aiQueue = Number(summary.ready || 0) + Number(summary.pendingInformation || 0) + Number(summary.waitingRealJob || 0);
+  app.innerHTML = `<div class="command-hero">
+    <div class="hero-copy">
+      <span class="eyebrow">Fluxo de candidatura</span>
+      <h2>Da vaga encontrada ao acompanhamento</h2>
+      <p>Este mapa separa busca, freela, vaga aceita, candidatura com IA e vagas aguardando resposta.</p>
+    </div>
+    <div class="hero-actions">
+      <button id="flowScanNow" class="primary">Buscar vagas</button>
+      <button data-tab="jobs">Ver vagas</button>
+      <button data-tab="applications">Candidaturas</button>
+    </div>
+  </div>
+
+  <div class="flow-grid">
+    ${flowStep("01", "Vagas", summary.availableJobs, "Novas oportunidades ficam aqui. Fontes assistidas sao lugares para procurar; vagas reais precisam ter link individual, formulario ou e-mail oficial.", "Abrir vagas", "jobs", "info")}
+    ${flowStep("02", "Taxas e freelas", summary.informal, "Eventos, bicos, diarias e extras ficam separados para avaliar valor/hora, risco, local e pagamento.", "Abrir freelas", "informal", "ready")}
+    ${flowStep("03", "Vagas aceitas", summary.approved, "Quando voce move uma vaga para Candidaturas e aprova, ela entra na fila de envio assistido.", "Abrir fila", "applications", "ready")}
+    ${flowStep("04", "Candidatura com IA", aiQueue, "O modo cirurgico revisa dados, canal, curriculo, carta, respostas salvas e o proximo passo seguro.", "Rodar IA", "applications", "warning")}
+    ${flowStep("05", "Aguardando respostas", summary.sent, "Depois de enviada ou marcada como enviada, a vaga sai do foco de busca e fica para acompanhamento e follow-up.", "Acompanhar", "applications", "success")}
+  </div>
+
+  <div class="command-grid">
+    <section>
+      <div class="section-head"><div><span class="eyebrow">Modo cirurgico</span><h3>O que ele faz</h3></div></div>
+      <div class="stack-list">
+        <div class="stack-item"><strong>Checa se a vaga e real</strong><span>Confere se existe link, e-mail, formulario ou canal oficial.</span></div>
+        <div class="stack-item"><strong>Confere seus dados</strong><span>Usa perfil, curriculo, respostas memorizadas e pergunta o que faltar.</span></div>
+        <div class="stack-item"><strong>Evita envio inseguro</strong><span>Bloqueia busca assistida, LinkedIn manual, CAPTCHA, login ou site sem permissao clara.</span></div>
+        <div class="stack-item"><strong>Registra tentativa</strong><span>Salva status, data, proximo passo e historico de cada candidatura.</span></div>
+      </div>
+    </section>
+    <section>
+      <div class="section-head"><div><span class="eyebrow">Modo TUDO</span><h3>Permissao ampla configurada</h3></div></div>
+      <p>Quando ativado nas configuracoes, o botao Modo TUDO aprova e roda a IA nas candidaturas selecionadas usando todas as permissoes que voce ligou. Ele continua respeitando regras de seguranca: nao burla CAPTCHA, nao automatiza LinkedIn logado, nao inventa dados e nao envia onde nao existe canal real.</p>
+      <div class="note"><strong>Para candidatura real:</strong> a vaga precisa ser individual, com link oficial, formulario, e-mail de RH ou API permitida. Busca do Google, LinkedIn Search, SINE ou InfoJobs sem vaga especifica ainda e apenas fonte de descoberta.</div>
+      <button data-tab="settings" class="primary">Configurar Modo TUDO</button>
+    </section>
+  </div>
+
+  <section>
+    <div class="section-head"><div><span class="eyebrow">Atalho pratico</span><h3>Importar uma vaga real encontrada</h3></div></div>
+    ${realLinkImporter("flow", () => flowPage())}
+  </section>`;
+  document.querySelector("#flowScanNow").onclick = () => runScanAndRefresh("flow");
+  bindRealLinkImporter("flow", () => flowPage());
+}
+
 async function jobs(initialMessage = "") {
   const rows = await json("/api/jobs");
   const filters = getSavedFilters("jobs", { q: "", source: "all", work: "all", status: "all", minScore: 0, salary: false, assisted: "all" });
@@ -497,6 +603,7 @@ async function jobs(initialMessage = "") {
       </div>
     </div>
     <div id="jobActionResult" class="note ${initialMessage ? "" : "hidden"}">${initialMessage}</div>
+    ${realLinkImporter("jobs", () => jobs("<strong>Link real importado.</strong><p>A vaga entrou na fila como fonte direta. Selecione e mova para candidaturas.</p>"))}
     <div id="jobFilters" class="filter-studio">
       <div class="filter-grid">
         <label>Buscar<input id="jobSearch" value="${escapeHtml(filters.q)}" placeholder="cargo, empresa, cidade, fonte"></label>
@@ -546,6 +653,7 @@ async function jobs(initialMessage = "") {
   };
 
   document.querySelector("#scanJobs").onclick = () => runScanAndRefresh("jobs");
+  bindRealLinkImporter("jobs", () => jobs("<strong>Link real importado.</strong><p>A vaga entrou na fila como fonte direta. Selecione e mova para candidaturas.</p>"));
   document.querySelector("#toggleJobFilters").onclick = () => document.querySelector("#jobFilters").classList.toggle("collapsed");
   document.querySelector("#selectAllJobs").onclick = () => document.querySelectorAll(".job-check").forEach((input) => input.checked = true);
   document.querySelector("#clearJobs").onclick = () => document.querySelectorAll(".job-check").forEach((input) => input.checked = false);
@@ -578,6 +686,11 @@ function showInlineResult(selector, message) {
 
 function renderAutomationResult(data) {
   const actions = data.actions || [];
+  const statusTone = (status) => {
+    if (["autofill_pronto", "auto_apply_pronto"].includes(status)) return "ready";
+    if (["precisa_informacao", "precisa_canal", "precisa_vaga_real", "bloqueada", "linkedin_manual"].includes(status)) return "warning";
+    return "info";
+  };
   const missingBlocks = actions
     .filter((action) => Array.isArray(action.questions) && action.questions.length)
     .map((action) => `<div class="memory-capture" data-profile-id="${action.profileId}">
@@ -591,17 +704,18 @@ function renderAutomationResult(data) {
     .join("");
   const lines = actions.map((action) => `<li>
     <strong>#${action.id}</strong>
-    <span class="state-chip ${action.status === "autofill_pronto" || action.status === "auto_apply_pronto" ? "ready" : action.status === "precisa_informacao" ? "warning" : "info"}">${escapeHtml(action.status)}</span>
+    <span class="state-chip ${statusTone(action.status)}">${escapeHtml(action.status)}</span>
     ${escapeHtml(action.message)}
     <small>${escapeHtml(action.nextStep || "")}</small>
     ${action.url ? `<a href="${escapeHtml(action.url)}" target="_blank" rel="noreferrer">abrir fonte</a>` : ""}
   </li>`).join("");
-  return `<strong>Modo cirúrgico executado para ${escapeHtml(data.profile?.name || "perfil ativo")}</strong><ul>${lines}</ul>${missingBlocks}`;
+  return `<strong>${escapeHtml(data.modeLabel || "Modo cirurgico executado")} para ${escapeHtml(data.profile?.name || "perfil ativo")}</strong><ul>${lines}</ul>${missingBlocks}`;
 }
 
 function applicationGuidance(row) {
-  if (row.source === "google-assisted-search") return "Abra a busca do Google, escolha a vaga real na pagina de resultados e importe o link especifico em data/manual-urls.txt.";
-  if (["sine", "infojobs", "jobs99", "rh-agencies-curitiba"].includes(row.source)) return "Esta entrada e uma busca assistida. Abra o link, escolha uma vaga real e importe o link especifico para personalizar a candidatura.";
+  if (row.source === "google-assisted-search") return "Abra a busca do Google, escolha a vaga real na pagina de resultados e importe o link oficial pelo campo Colar link oficial de candidatura.";
+  if (row.source === "linkedin-search") return "Este link abre a busca direta no LinkedIn Jobs. Abra a vaga individual no LinkedIn e se candidate pela sua conta; para o agente acompanhar, importe o link especifico da vaga.";
+  if (assistedSources.has(row.source)) return "Esta entrada e uma busca assistida, nao uma candidatura real. Abra o link, escolha uma vaga especifica e importe o link oficial pelo painel.";
   if (row.url) return `Abra o link oficial da fonte (${row.source}) e revise os dados antes do envio.`;
   if (row.source === "companyHunter") return "Prospecao ativa sem link. Pesquise pagina Trabalhe Conosco, contato de RH ou e-mail oficial da empresa.";
   if (String(row.source).includes("whatsapp")) return "Sem link no WhatsApp. Peça empresa, local, horario, remuneracao, responsavel e forma oficial de candidatura.";
@@ -659,6 +773,7 @@ async function applications(initialMessage = "") {
         <button id="clearApplications">Limpar</button>
         <button id="approveApplications" class="primary">Aprovar</button>
         <button id="autoApplyApplications" class="primary">Modo cirurgico</button>
+        <button id="everythingModeApplications" class="primary">Modo TUDO</button>
         <button id="assistedApplyApplications">Candidatar-se com IA</button>
         <button id="retryApplications">Candidatar novamente</button>
         <button id="markSentApplications">Marcar enviada</button>
@@ -738,6 +853,7 @@ async function applications(initialMessage = "") {
   document.querySelector("#markSentApplications").onclick = () => postSelection("/api/applications/mark-sent", (data) => `<strong>${data.sent} candidatura(s) marcada(s) como enviada(s).</strong>`);
   document.querySelector("#retryApplications").onclick = () => postSelection("/api/applications/retry", (data) => `<strong>${data.retried} candidatura(s) recolocada(s) para tentar novamente.</strong> Rode o modo cirurgico para revisar dados e canal.`);
   document.querySelector("#autoApplyApplications").onclick = () => postSelection("/api/applications/auto-apply", renderAutomationResult);
+  document.querySelector("#everythingModeApplications").onclick = () => postSelection("/api/applications/everything-mode", renderAutomationResult);
   document.querySelector("#assistedApplyApplications").onclick = () => postSelection("/api/applications/assisted-apply", (data) => {
     const lines = (data.actions || []).map((action) => `<li><strong>#${action.id}</strong> <span class="state-chip ${action.status === "pronta_para_formulario" ? "ready" : action.status === "ja_candidatado" ? "success" : action.status === "bloqueada" ? "warning" : "info"}">${escapeHtml(action.status)}</span>: ${escapeHtml(action.message)}<small>${escapeHtml(action.nextStep || "")}</small>${action.url ? `<a href="${escapeHtml(action.url)}" target="_blank" rel="noreferrer">abrir fonte</a>` : ""}</li>`).join("");
     return `<strong>Resultado da candidatura assistida</strong><ul>${lines}</ul>`;
@@ -774,7 +890,10 @@ async function profilesPage() {
           <div><span>Memória</span><strong>${profile.memory_count || 0}</strong></div>
           <div><span>Candidaturas</span><strong>${profile.applications_count || 0}</strong></div>
         </div>
-        ${Number(profile.is_active) === 1 ? "" : `<button data-activate-profile="${profile.id}" class="full">Ativar perfil</button>`}
+        <div class="profile-actions">
+          ${Number(profile.is_active) === 1 ? "" : `<button data-activate-profile="${profile.id}">Ativar perfil</button>`}
+          ${(data.profiles || []).length > 1 ? `<button data-delete-profile="${profile.id}">Excluir perfil</button>` : ""}
+        </div>
       </div>`).join("")}</div>
     </section>
 
@@ -807,6 +926,13 @@ async function profilesPage() {
   document.querySelectorAll("[data-activate-profile]").forEach((button) => button.addEventListener("click", async () => {
     await json(`/api/profiles/${button.dataset.activateProfile}/activate`, { method: "POST" });
     toast("Perfil ativado.", "success");
+    await profilesPage();
+  }));
+  document.querySelectorAll("[data-delete-profile]").forEach((button) => button.addEventListener("click", async () => {
+    const ok = confirm("Excluir este perfil e as respostas memorizadas dele? O historico das candidaturas sera preservado.");
+    if (!ok) return;
+    await json(`/api/profiles/${button.dataset.deleteProfile}`, { method: "DELETE" });
+    toast("Perfil excluido.", "success");
     await profilesPage();
   }));
   document.querySelector("#createProfile").onclick = async () => {
@@ -1045,6 +1171,7 @@ async function settings() {
           ${settingToggle("Pausar agente", "agent.paused", data.agent.paused, "Interrompe rotinas automáticas sem apagar suas configurações.")}
           ${settingToggle("Modo seguro/dry-run", "agent.dryRun", data.agent.dryRun, "Simula ações e registra decisões antes de qualquer envio real.")}
           ${settingToggle("Preparar candidaturas", "applications.prepareApplications", getPath(data, "applications.prepareApplications"), "Gera currículo, carta e pacote de candidatura para vagas aprovadas.")}
+          ${settingToggle("Modo TUDO", "applications.everythingMode", getPath(data, "applications.everythingMode"), "Com sua permissão explícita, aprova e roda a IA nas candidaturas selecionadas usando todas as ações permitidas pelas suas regras. Não burla CAPTCHA, login, LinkedIn ou site sem canal oficial.")}
           ${settingToggle("Auto apply permitido", "applications.autoApply", getPath(data, "applications.autoApply"), "Só tenta enviar quando a plataforma permitir, sem CAPTCHA e com dados completos.")}
           ${settingToggle("Auto apply quando permitido", "applications.autoApplyWhenAllowed", getPath(data, "applications.autoApplyWhenAllowed"), "Ativa a lógica cirúrgica: enviar apenas onde houver canal seguro.")}
           ${settingToggle("Preencher formulários", "applications.autoFillFormsWhenAllowed", getPath(data, "applications.autoFillFormsWhenAllowed"), "Monta respostas e campos para formulário oficial da vaga.")}
@@ -1132,6 +1259,7 @@ async function load(tab) {
   document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
   try {
     if (tab === "jobs") return jobs();
+    if (tab === "flow") return flowPage();
     if (tab === "informal") return informal();
     if (tab === "applications") return applications();
     if (tab === "profiles") return profilesPage();
