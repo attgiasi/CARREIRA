@@ -9,6 +9,7 @@ import { refreshSecrets, secrets } from "../../config/secrets.js";
 import { normalizeJob } from "../jobs/normalizer.js";
 import { buildApplicationPacket } from "../applications/applicationBuilder.js";
 import { enqueueApplication } from "../applications/approvalQueue.js";
+import { CandidateProfile, decideAutomation, MemoryAnswer } from "../applications/autoApplyEngine.js";
 
 export const apiRouter = Router();
 const execFileAsync = promisify(execFile);
@@ -48,6 +49,8 @@ function envStatus() {
     envExists: fs.existsSync(envPath),
     openaiConfigured: Boolean(secrets.openaiApiKey),
     openaiModel: secrets.openaiModel,
+    geminiConfigured: Boolean(secrets.geminiApiKey),
+    geminiModel: secrets.geminiModel,
     googleSearchConfigured: Boolean(secrets.googleSearchApiKey && secrets.googleSearchEngineId),
     gmailConfigured: Boolean(secrets.googleClientId && secrets.googleClientSecret && secrets.gmailRefreshToken),
     databaseUrl: secrets.databaseUrl,
@@ -57,12 +60,80 @@ function envStatus() {
   };
 }
 
+function boolNumber(value: unknown): number {
+  return value ? 1 : 0;
+}
+
+function profileFromRow(row: Record<string, unknown>): CandidateProfile {
+  return {
+    id: Number(row.id),
+    label: String(row.label ?? ""),
+    name: String(row.name ?? ""),
+    email: String(row.email ?? ""),
+    phone: String(row.phone ?? ""),
+    linkedin: String(row.linkedin ?? ""),
+    city: String(row.city ?? ""),
+    state: String(row.state ?? ""),
+    country: String(row.country ?? ""),
+    summary: String(row.summary ?? ""),
+    resume_file: String(row.resume_file ?? "")
+  };
+}
+
+function ensureDefaultCandidateProfile(db: CareerDatabase): void {
+  const count = db.query("SELECT COUNT(*) as total FROM candidate_profiles")[0]?.total ?? 0;
+  if (Number(count) > 0) return;
+  const settings = loadSettings();
+  const resumeFolder = path.resolve(process.cwd(), "resumes");
+  const resumeFile = fs.existsSync(resumeFolder)
+    ? fs.readdirSync(resumeFolder).find((file) => /\.(pdf|docx?|md)$/i.test(file) && file.toLowerCase() !== "readme.md") ?? ""
+    : "";
+  db.run(
+    `INSERT INTO candidate_profiles (
+      label, name, email, phone, linkedin, city, state, country, summary, resume_file, is_active, raw_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    [
+      "Perfil principal",
+      settings.profile.name,
+      settings.profile.email,
+      settings.profile.phone,
+      settings.profile.linkedin,
+      settings.profile.city,
+      settings.profile.state,
+      settings.profile.country,
+      settings.profile.summary,
+      resumeFile,
+      JSON.stringify(settings.profile)
+    ]
+  );
+}
+
+function getActiveCandidateProfile(db: CareerDatabase): CandidateProfile {
+  ensureDefaultCandidateProfile(db);
+  const row = db.query<Record<string, unknown>>("SELECT * FROM candidate_profiles WHERE is_active = 1 ORDER BY id LIMIT 1")[0]
+    ?? db.query<Record<string, unknown>>("SELECT * FROM candidate_profiles ORDER BY id LIMIT 1")[0];
+  return profileFromRow(row);
+}
+
+function applicationStatusForDecision(status: string): string {
+  const labels: Record<string, string> = {
+    precisa_informacao: "Aguardando resposta do usuário",
+    precisa_canal: "Aguardando canal de candidatura",
+    precisa_vaga_real: "Aguardando vaga real da fonte",
+    linkedin_manual: "LinkedIn manual",
+    autofill_pronto: "Preenchimento automático pronto",
+    auto_apply_pronto: "Candidatura automática pronta"
+  };
+  return labels[status] ?? status;
+}
+
 apiRouter.get("/health", (_req, res) => {
   res.json({ ok: true, status: "online", time: new Date().toISOString(), environment: envStatus() });
 });
 
 apiRouter.get("/summary", async (_req, res) => {
   const db = await CareerDatabase.open();
+  ensureDefaultCandidateProfile(db);
   const jobs = db.query("SELECT COUNT(*) as total FROM jobs")[0]?.total ?? 0;
   const availableJobs = db.query(`
     SELECT COUNT(*) as total
@@ -70,7 +141,7 @@ apiRouter.get("/summary", async (_req, res) => {
     LEFT JOIN applications a ON a.job_id = j.id
     WHERE a.id IS NULL
   `)[0]?.total ?? 0;
-  const gold = db.query("SELECT COUNT(*) as total FROM jobs WHERE status = 'Vaga Ouro' AND source NOT IN ('google-assisted-search', 'sine', 'infojobs', 'jobs99', 'rh-agencies-curitiba')")[0]?.total ?? 0;
+  const gold = db.query("SELECT COUNT(*) as total FROM jobs WHERE status = 'Vaga Ouro' AND source NOT IN ('google-assisted-search', 'sine', 'infojobs', 'jobs99', 'rh-agencies-curitiba', 'linkedin-search', 'indeed-search', 'vagascom-search', 'catho-search', 'netvagas-search', 'bne-search', 'trabalhabrasil-search', 'glassdoor-search', 'empregos-search')")[0]?.total ?? 0;
   const applications = db.query("SELECT COUNT(*) as total FROM applications")[0]?.total ?? 0;
   const awaitingApproval = db.query("SELECT COUNT(*) as total FROM applications WHERE approval_status = 'aguardando_aprovacao'")[0]?.total ?? 0;
   const approved = db.query("SELECT COUNT(*) as total FROM applications WHERE approval_status = 'aprovado_pelo_usuario'")[0]?.total ?? 0;
@@ -78,7 +149,10 @@ apiRouter.get("/summary", async (_req, res) => {
   const sent = db.query("SELECT COUNT(*) as total FROM applications WHERE application_status = 'Candidatura enviada' OR sent_by_agent = 1")[0]?.total ?? 0;
   const waitingRealJob = db.query("SELECT COUNT(*) as total FROM applications WHERE application_status = 'Aguardando vaga real da fonte'")[0]?.total ?? 0;
   const ready = db.query("SELECT COUNT(*) as total FROM applications WHERE application_status = 'Pronta para envio assistido'")[0]?.total ?? 0;
+  const pendingInformation = db.query("SELECT COUNT(*) as total FROM applications WHERE application_status = 'Aguardando resposta do usuário'")[0]?.total ?? 0;
   const informal = db.query("SELECT COUNT(*) as total FROM informal_opportunities")[0]?.total ?? 0;
+  const profiles = db.query("SELECT COUNT(*) as total FROM candidate_profiles")[0]?.total ?? 0;
+  const memoryAnswers = db.query("SELECT COUNT(*) as total FROM answer_memory")[0]?.total ?? 0;
   const bySource = db.query("SELECT source, COUNT(*) as total FROM jobs GROUP BY source ORDER BY total DESC LIMIT 8");
   const byWorkModel = db.query("SELECT COALESCE(work_model, 'A confirmar') as work_model, COUNT(*) as total FROM jobs GROUP BY work_model ORDER BY total DESC LIMIT 6");
   const byApplicationStatus = db.query("SELECT COALESCE(application_status, 'Sem status') as status, COUNT(*) as total FROM applications GROUP BY application_status ORDER BY total DESC LIMIT 8");
@@ -87,7 +161,7 @@ apiRouter.get("/summary", async (_req, res) => {
   const topJobs = db.query(`
     SELECT title, company, source, fit_score, risk_score, status
     FROM jobs
-    WHERE source NOT IN ('google-assisted-search', 'sine', 'infojobs', 'jobs99', 'rh-agencies-curitiba')
+    WHERE source NOT IN ('google-assisted-search', 'sine', 'infojobs', 'jobs99', 'rh-agencies-curitiba', 'linkedin-search', 'indeed-search', 'vagascom-search', 'catho-search', 'netvagas-search', 'bne-search', 'trabalhabrasil-search', 'glassdoor-search', 'empregos-search')
     ORDER BY fit_score DESC, job_quality_score DESC, risk_score ASC
     LIMIT 5
   `);
@@ -110,7 +184,10 @@ apiRouter.get("/summary", async (_req, res) => {
     sent,
     waitingRealJob,
     ready,
+    pendingInformation,
     informal,
+    profiles,
+    memoryAnswers,
     bySource,
     byWorkModel,
     byApplicationStatus,
@@ -120,6 +197,139 @@ apiRouter.get("/summary", async (_req, res) => {
     lastAppliedAt,
     environment: envStatus()
   });
+});
+
+apiRouter.get("/profiles", async (_req, res) => {
+  const db = await CareerDatabase.open();
+  ensureDefaultCandidateProfile(db);
+  const profiles = db.query(`
+    SELECT
+      p.*,
+      (SELECT COUNT(*) FROM answer_memory m WHERE m.user_profile_id = p.id) as memory_count,
+      (SELECT COUNT(*) FROM applications a WHERE a.user_profile_id = p.id) as applications_count
+    FROM candidate_profiles p
+    ORDER BY p.is_active DESC, p.id ASC
+  `);
+  res.json({ profiles, active: profiles.find((profile) => Number(profile.is_active) === 1) ?? profiles[0] });
+});
+
+apiRouter.post("/profiles", async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+  const name = String(body.name ?? "").trim();
+  if (!name) {
+    res.status(400).json({ error: "Informe o nome do perfil." });
+    return;
+  }
+  const db = await CareerDatabase.open();
+  ensureDefaultCandidateProfile(db);
+  if (body.is_active) db.run("UPDATE candidate_profiles SET is_active = 0");
+  db.run(
+    `INSERT INTO candidate_profiles (
+      label, name, email, phone, linkedin, city, state, country, summary, resume_file, is_active, raw_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      String(body.label ?? name),
+      name,
+      String(body.email ?? ""),
+      String(body.phone ?? ""),
+      String(body.linkedin ?? ""),
+      String(body.city ?? ""),
+      String(body.state ?? ""),
+      String(body.country ?? "Brasil"),
+      String(body.summary ?? ""),
+      String(body.resume_file ?? ""),
+      boolNumber(body.is_active),
+      JSON.stringify(body)
+    ]
+  );
+  res.json({ ok: true, id: db.query("SELECT last_insert_rowid() as id")[0]?.id });
+});
+
+apiRouter.put("/profiles/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const body = req.body as Record<string, unknown>;
+  if (!id) {
+    res.status(400).json({ error: "Perfil inválido." });
+    return;
+  }
+  const db = await CareerDatabase.open();
+  if (body.is_active) db.run("UPDATE candidate_profiles SET is_active = 0 WHERE id <> ?", [id]);
+  db.run(
+    `UPDATE candidate_profiles
+     SET label = ?, name = ?, email = ?, phone = ?, linkedin = ?, city = ?, state = ?, country = ?,
+         summary = ?, resume_file = ?, is_active = ?, raw_json = ?, updated_at = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [
+      String(body.label ?? ""),
+      String(body.name ?? ""),
+      String(body.email ?? ""),
+      String(body.phone ?? ""),
+      String(body.linkedin ?? ""),
+      String(body.city ?? ""),
+      String(body.state ?? ""),
+      String(body.country ?? "Brasil"),
+      String(body.summary ?? ""),
+      String(body.resume_file ?? ""),
+      boolNumber(body.is_active),
+      JSON.stringify(body),
+      id
+    ]
+  );
+  res.json({ ok: true });
+});
+
+apiRouter.post("/profiles/:id/activate", async (req, res) => {
+  const id = Number(req.params.id);
+  const db = await CareerDatabase.open();
+  db.run("UPDATE candidate_profiles SET is_active = 0");
+  db.run("UPDATE candidate_profiles SET is_active = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [id]);
+  res.json({ ok: true });
+});
+
+apiRouter.get("/answer-memory", async (req, res) => {
+  const db = await CareerDatabase.open();
+  const active = getActiveCandidateProfile(db);
+  const profileId = Number(req.query.profileId ?? active.id);
+  const answers = db.query("SELECT * FROM answer_memory WHERE user_profile_id = ? ORDER BY category, question_key", [profileId]);
+  res.json({ profileId, answers });
+});
+
+apiRouter.post("/answer-memory/bulk", async (req, res) => {
+  const db = await CareerDatabase.open();
+  const active = getActiveCandidateProfile(db);
+  const profileId = Number(req.body?.profileId ?? active.id);
+  const answers = Array.isArray(req.body?.answers) ? req.body.answers as Array<Record<string, unknown>> : [];
+  if (!answers.length) {
+    res.status(400).json({ error: "Nenhuma resposta recebida." });
+    return;
+  }
+  for (const answer of answers) {
+    const key = String(answer.key ?? answer.question_key ?? "").trim();
+    const value = String(answer.answer ?? answer.answer_text ?? "").trim();
+    if (!key || !value) continue;
+    db.run(
+      `INSERT INTO answer_memory (
+        user_profile_id, question_key, question_text, answer_text, field_type, category, usage_count, approved_by_user, updated_at, last_used_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_profile_id, question_key) DO UPDATE SET
+        question_text = excluded.question_text,
+        answer_text = excluded.answer_text,
+        field_type = excluded.field_type,
+        category = excluded.category,
+        approved_by_user = 1,
+        updated_at = CURRENT_TIMESTAMP,
+        last_used_at = CURRENT_TIMESTAMP`,
+      [
+        profileId,
+        key,
+        String(answer.question ?? answer.question_text ?? key),
+        value,
+        String(answer.fieldType ?? answer.field_type ?? "text"),
+        String(answer.category ?? "Geral")
+      ]
+    );
+  }
+  res.json({ ok: true, saved: answers.length, profileId });
 });
 
 apiRouter.get("/jobs", async (_req, res) => {
@@ -137,7 +347,7 @@ apiRouter.get("/jobs", async (_req, res) => {
     LEFT JOIN applications a ON a.job_id = j.id
     WHERE a.id IS NULL
     ORDER BY
-      CASE WHEN j.source IN ('google-assisted-search', 'sine', 'infojobs', 'jobs99', 'rh-agencies-curitiba') THEN 1 ELSE 0 END ASC,
+      CASE WHEN j.source IN ('google-assisted-search', 'sine', 'infojobs', 'jobs99', 'rh-agencies-curitiba', 'linkedin-search', 'indeed-search', 'vagascom-search', 'catho-search', 'netvagas-search', 'bne-search', 'trabalhabrasil-search', 'glassdoor-search', 'empregos-search') THEN 1 ELSE 0 END ASC,
       j.fit_score DESC,
       j.job_quality_score DESC,
       j.risk_score ASC
@@ -290,6 +500,136 @@ apiRouter.post("/applications/mark-sent", async (req, res) => {
   res.json({ ok: true, sent: ids.length });
 });
 
+apiRouter.post("/applications/retry", async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+  if (!ids.length) {
+    res.status(400).json({ error: "Nenhuma candidatura selecionada." });
+    return;
+  }
+  const db = await CareerDatabase.open();
+  const profile = getActiveCandidateProfile(db);
+  for (const id of ids) {
+    db.run(
+      `UPDATE applications
+       SET approval_status = ?, application_status = ?, sent_by_agent = 0,
+           retry_count = COALESCE(retry_count, 0) + 1,
+           last_attempt_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP,
+           user_profile_id = COALESCE(user_profile_id, ?),
+           notes = COALESCE(notes, '') || ?
+       WHERE id = ?`,
+      [
+        "aprovado_pelo_usuario",
+        "Reenvio solicitado",
+        profile.id,
+        `\nCandidatura colocada para tentar novamente em ${new Date().toISOString()}.`,
+        id
+      ]
+    );
+    db.run(
+      "INSERT INTO application_attempts (application_id, user_profile_id, mode, status, result_message) VALUES (?, ?, ?, ?, ?)",
+      [id, profile.id, "retry", "reenvio_solicitado", "Usuário solicitou candidatura novamente."]
+    );
+  }
+  res.json({ ok: true, retried: ids.length });
+});
+
+apiRouter.post("/applications/auto-apply", async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+  if (!ids.length) {
+    res.status(400).json({ error: "Nenhuma candidatura selecionada." });
+    return;
+  }
+  const db = await CareerDatabase.open();
+  const settings = loadSettings();
+  const profile = getActiveCandidateProfile(db);
+  const memory = db.query<MemoryAnswer>(
+    "SELECT question_key, answer_text FROM answer_memory WHERE user_profile_id = ?",
+    [profile.id]
+  );
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = db.query<Record<string, unknown>>(`
+    SELECT
+      a.*,
+      j.title,
+      j.company,
+      j.source,
+      j.url,
+      j.salary,
+      j.location,
+      j.work_model,
+      j.description,
+      j.driver_license_required,
+      j.own_vehicle_required
+    FROM applications a
+    LEFT JOIN jobs j ON j.id = a.job_id
+    WHERE a.id IN (${placeholders})
+  `, ids);
+
+  const actions: Array<Record<string, unknown>> = [];
+  for (const row of rows) {
+    const id = Number(row.id);
+    if (String(row.approval_status ?? "") !== "aprovado_pelo_usuario") {
+      actions.push({
+        id,
+        status: "bloqueada",
+        message: "A candidatura precisa ser aprovada antes do modo cirúrgico.",
+        nextStep: "Clique em Aprovar e rode o modo cirúrgico novamente."
+      });
+      continue;
+    }
+    const decision = decideAutomation(row, profile, memory, settings);
+    const applicationStatus = applicationStatusForDecision(decision.status);
+    db.run(
+      `UPDATE applications
+       SET application_status = ?, automation_mode = ?, user_profile_id = ?, last_attempt_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ?
+       WHERE id = ?`,
+      [
+        applicationStatus,
+        "cirurgico_alto_desempenho",
+        profile.id,
+        `\nModo cirúrgico: ${decision.status}. ${decision.message}`,
+        id
+      ]
+    );
+    db.run(
+      `INSERT INTO application_attempts (
+        application_id, user_profile_id, mode, status, result_message, missing_questions_json, filled_fields_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        profile.id,
+        "cirurgico_alto_desempenho",
+        decision.status,
+        decision.message,
+        JSON.stringify(decision.questions),
+        JSON.stringify(decision.filledFields)
+      ]
+    );
+    for (const key of Object.keys(decision.filledFields)) {
+      db.run(
+        "UPDATE answer_memory SET usage_count = usage_count + 1, last_used_at = CURRENT_TIMESTAMP WHERE user_profile_id = ? AND question_key = ?",
+        [profile.id, key]
+      );
+    }
+    actions.push({
+      id,
+      profileId: profile.id,
+      profileName: profile.name,
+      status: decision.status,
+      message: decision.message,
+      nextStep: decision.nextStep,
+      questions: decision.questions,
+      filledFields: decision.filledFields,
+      canAutofill: decision.canAutofill,
+      canSubmitAutomatically: decision.canSubmitAutomatically,
+      url: row.url
+    });
+  }
+  res.json({ ok: true, actions, profile });
+});
+
 apiRouter.post("/applications/assisted-apply", async (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
   if (!ids.length) {
@@ -329,7 +669,7 @@ apiRouter.post("/applications/assisted-apply", async (req, res) => {
       });
       continue;
     }
-    if (["google-assisted-search", "sine", "infojobs", "jobs99", "rh-agencies-curitiba"].includes(source)) {
+    if (["google-assisted-search", "sine", "infojobs", "jobs99", "rh-agencies-curitiba", "linkedin-search", "indeed-search", "vagascom-search", "catho-search", "netvagas-search", "bne-search", "trabalhabrasil-search", "glassdoor-search", "empregos-search"].includes(source)) {
       db.run(
         "UPDATE applications SET application_status = ?, updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ? WHERE id = ?",
         ["Aguardando vaga real da fonte", `\nFonte assistida: abrir o link, escolher vaga real e importar o link específico.`, id]
@@ -385,12 +725,14 @@ apiRouter.post("/environment", (req, res) => {
   const body = req.body as Record<string, string | undefined>;
   const updates: Record<string, string | undefined> = {
     OPENAI_MODEL: body.openaiModel?.trim() || "gpt-4o-mini",
+    GEMINI_MODEL: body.geminiModel?.trim() || "gemini-1.5-flash",
     GOOGLE_SEARCH_ENGINE_ID: body.googleSearchEngineId?.trim() || undefined,
     DATABASE_URL: body.databaseUrl?.trim() || "file:./data/jobs.sqlite",
     PORT: body.port?.trim() || undefined,
     DASHBOARD_PORT: body.port?.trim() || "8788"
   };
   if (body.openaiApiKey?.trim()) updates.OPENAI_API_KEY = body.openaiApiKey.trim();
+  if (body.geminiApiKey?.trim()) updates.GEMINI_API_KEY = body.geminiApiKey.trim();
   if (body.googleSearchApiKey?.trim()) updates.GOOGLE_SEARCH_API_KEY = body.googleSearchApiKey.trim();
   writeEnvValues(updates);
   Object.entries(updates).forEach(([key, value]) => {

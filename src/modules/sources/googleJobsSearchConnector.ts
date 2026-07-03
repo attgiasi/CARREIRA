@@ -19,10 +19,14 @@ function buildQueries(settings: AgentSettings): string[] {
     `"${role}" "${location}" "processo seletivo"`
   ]);
   const platformFocused = pairs.slice(0, 10).flatMap(({ role, location }) => [
+    `site:linkedin.com/jobs "${role}" "${location}"`,
     `site:gupy.io "${role}" "${location}"`,
     `site:solides.jobs "${role}" "${location}"`,
     `site:infojobs.com.br "${role}" "${location}"`,
-    `site:99jobs.com "${role}" "${location}"`
+    `site:99jobs.com "${role}" "${location}"`,
+    `site:vagas.com.br "${role}" "${location}"`,
+    `site:br.indeed.com "${role}" "${location}"`,
+    `site:netvagas.com.br "${role}" "${location}"`
   ]);
   return [
     ...base,

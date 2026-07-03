@@ -23,6 +23,10 @@ O objetivo não é sair se candidatando em massa. O agente funciona como assiste
 - Coloca candidatura em fila de aprovação.
 - Gera resumo diário e radar semanal.
 - Mostra painel local em `http://localhost:8788` com dashboard, filtros, colunas configuráveis, currículo e configuração visual.
+- Mantém perfis de candidatura para pessoas diferentes.
+- Pergunta dados ausentes, salva na memória do perfil e reutiliza nas próximas candidaturas.
+- Tem modo cirúrgico para revisar canal, dados, risco, fonte e pacote de preenchimento antes do envio.
+- Inclui botão para candidatar novamente em vagas já trabalhadas.
 - Registra auditoria em JSONL com dados sensíveis mascarados.
 
 ## O que ele não faz
@@ -117,6 +121,7 @@ Gemini fallback fica desligado por padrão:
 
 ```env
 GEMINI_API_KEY=
+GEMINI_MODEL=gemini-1.5-flash
 ```
 
 Mesmo sem IA externa, o projeto roda com regras determinísticas.
@@ -140,10 +145,29 @@ Fontes incluídas:
 - SINE / Emprega Curitiba;
 - InfoJobs;
 - 99jobs;
+- LinkedIn Jobs apenas para encontrar vagas;
+- Indeed;
+- Vagas.com;
+- Catho;
+- NetVagas;
+- BNE;
+- Trabalha Brasil;
+- Glassdoor;
+- Empregos.com.br;
 - agências de RH em Curitiba;
 - páginas diretas cadastradas em `data/rh-agencies-curitiba.json`.
 
-O agente não faz scraping agressivo dessas plataformas. Quando o resultado for uma busca assistida, abra o link, escolha a vaga real e cole o link específico em `data/manual-urls.txt` para análise detalhada.
+O agente não faz scraping agressivo dessas plataformas. Quando o resultado for uma busca assistida, abra o link, escolha a vaga real e cole o link específico em `data/manual-urls.txt` para análise detalhada. No LinkedIn, o agente só encontra oportunidades; você abre e se candidata manualmente.
+
+## Perfis, memória e modo cirúrgico
+
+Use a aba `Perfis` para criar pessoas diferentes, cada uma com dados, currículo e memória própria.
+
+Na aba `Candidaturas`, o botão `Modo cirúrgico` tenta montar o pacote de preenchimento da vaga. Se faltar telefone, disponibilidade, pretensão salarial ou outra resposta recorrente, o painel pergunta e salva em `answer_memory` para preencher automaticamente nas próximas vagas do mesmo perfil.
+
+O botão `Candidatar novamente` recoloca uma candidatura na fila sem apagar o histórico anterior.
+
+Envio automático real só deve acontecer quando houver canal oficial permitido, dados completos, sem CAPTCHA e com configuração explícita. LinkedIn permanece manual por segurança.
 
 ## Currículos
 

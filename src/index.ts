@@ -39,6 +39,15 @@ async function collectRawJobs(): Promise<RawJob[]> {
     Promise.resolve(settings.sources.sine ? fetchJobBoardSearches(settings, "sine") : []),
     Promise.resolve(settings.sources.infojobs ? fetchJobBoardSearches(settings, "infojobs") : []),
     Promise.resolve(settings.sources.jobs99 ? fetchJobBoardSearches(settings, "jobs99") : []),
+    Promise.resolve(settings.sources.linkedinSearch ? fetchJobBoardSearches(settings, "linkedinSearch") : []),
+    Promise.resolve(settings.sources.indeedSearch ? fetchJobBoardSearches(settings, "indeedSearch") : []),
+    Promise.resolve(settings.sources.vagasCom ? fetchJobBoardSearches(settings, "vagasCom") : []),
+    Promise.resolve(settings.sources.cathoSearch ? fetchJobBoardSearches(settings, "cathoSearch") : []),
+    Promise.resolve(settings.sources.netvagas ? fetchJobBoardSearches(settings, "netvagas") : []),
+    Promise.resolve(settings.sources.bne ? fetchJobBoardSearches(settings, "bne") : []),
+    Promise.resolve(settings.sources.trabalhaBrasil ? fetchJobBoardSearches(settings, "trabalhaBrasil") : []),
+    Promise.resolve(settings.sources.glassdoorSearch ? fetchJobBoardSearches(settings, "glassdoorSearch") : []),
+    Promise.resolve(settings.sources.empregosComBr ? fetchJobBoardSearches(settings, "empregosComBr") : []),
     Promise.resolve(settings.sources.rhAgenciesCuritiba ? fetchRhAgencySearches(settings) : []),
     Promise.resolve(settings.sources.companyHunter ? seedTargetCompanyOpportunities() : [])
   ]);

@@ -5,13 +5,29 @@ const tabs = [
   ["dashboard", "Painel"],
   ["jobs", "Vagas"],
   ["applications", "Candidaturas"],
+  ["profiles", "Perfis"],
   ["resume", "Meu Curriculo"],
   ["informal", "Freelas"],
   ["settings", "Configuracoes"],
   ["logs", "Logs"]
 ];
 
-const assistedSources = new Set(["google-assisted-search", "sine", "infojobs", "jobs99", "rh-agencies-curitiba"]);
+const assistedSources = new Set([
+  "google-assisted-search",
+  "sine",
+  "infojobs",
+  "jobs99",
+  "rh-agencies-curitiba",
+  "linkedin-search",
+  "indeed-search",
+  "vagascom-search",
+  "catho-search",
+  "netvagas-search",
+  "bne-search",
+  "trabalhabrasil-search",
+  "glassdoor-search",
+  "empregos-search"
+]);
 
 const tableColumns = {
   jobs: [
@@ -41,7 +57,7 @@ const tableColumns = {
     { id: "dates", label: "Datas", render: (row) => `<small>Preparada: ${formatDate(row.created_at)}</small><small>Ultima acao: ${formatDate(row.updated_at)}</small><small>Candidatado: ${formatDate(row.applied_at)}</small>` },
     { id: "assets", label: "Curriculo/Carta", render: (row) => `<small>CV: ${escapeHtml(row.generated_resume_path || "Nao gerado")}</small><small>Carta: ${escapeHtml(row.cover_letter_path || "Nao gerada")}</small>` },
     { id: "risk", label: "Risco", default: false, render: (row) => `<strong class="${riskClass(row.risk_score)}">${row.risk_score ?? "-"}</strong><small>${escapeHtml(row.risk_flags || "Sem alerta")}</small>` },
-    { id: "action", label: "Acao", always: true, render: (row) => `${row.url ? `<a class="action" href="${escapeHtml(row.url)}" target="_blank" rel="noreferrer">Abrir fonte</a>` : ""}${row.job_id ? `<button data-detail="${row.job_id}">Detalhes</button>` : ""}` }
+    { id: "action", label: "Acao", always: true, render: (row) => `${row.url ? `<a class="action" href="${escapeHtml(row.url)}" target="_blank" rel="noreferrer">Abrir fonte</a>` : ""}${row.job_id ? `<button data-detail="${row.job_id}">Detalhes</button>` : ""}<button data-retry="${row.id}">Candidatar novamente</button>` }
   ]
 };
 
@@ -94,6 +110,15 @@ function labelize(key) {
     googleJobsSearch: "Busca Google",
     rhAgenciesCuritiba: "Agencias de RH em Curitiba",
     jobs99: "99jobs",
+    linkedinSearch: "LinkedIn Jobs",
+    indeedSearch: "Indeed",
+    vagasCom: "Vagas.com",
+    cathoSearch: "Catho",
+    netvagas: "NetVagas",
+    bne: "BNE",
+    trabalhaBrasil: "Trabalha Brasil",
+    glassdoorSearch: "Glassdoor",
+    empregosComBr: "Empregos.com.br",
     gmailAlerts: "Alertas do Gmail",
     manualUrlImporter: "Links manuais",
     companyHunter: "Empresas-alvo",
@@ -153,10 +178,42 @@ function numberInput(label, path, value, hint = "") {
   return input(label, path, value, "number", hint);
 }
 
+function optionDescription(key) {
+  const descriptions = {
+    googleJobsSearch: "Cria buscas amplas no Google e importa resultados quando a API estiver configurada.",
+    linkedinSearch: "Localiza vagas no LinkedIn; você abre e se candidata manualmente pela sua conta.",
+    infojobs: "Busca oportunidades no InfoJobs e ajuda a filtrar vagas reais.",
+    jobs99: "Monitora oportunidades na 99jobs por cargo e localização.",
+    sine: "Inclui SINE, Emprega Curitiba e portais públicos relacionados.",
+    indeedSearch: "Cria buscas no Indeed para ampliar o radar sem scraping agressivo.",
+    vagasCom: "Busca vagas em Vagas.com por cargo e cidade.",
+    cathoSearch: "Inclui Catho como fonte assistida de pesquisa.",
+    netvagas: "Inclui NetVagas para oportunidades nacionais e remotas.",
+    bne: "Inclui Banco Nacional de Empregos como fonte assistida.",
+    trabalhaBrasil: "Amplia buscas em Trabalha Brasil, útil para vagas operacionais.",
+    glassdoorSearch: "Busca vagas e sinais de reputação via Glassdoor.",
+    empregosComBr: "Inclui Empregos.com.br como fonte adicional.",
+    autoApply: "Permite tentar envio automático apenas em canais permitidos e configurados.",
+    autoApplyWhenAllowed: "Aciona automação somente quando a plataforma permite e os dados estão completos.",
+    autoFillFormsWhenAllowed: "Prepara os campos para preenchimento de formulário quando houver canal oficial.",
+    askAndRememberMissingFields: "Quando faltar uma resposta, o agente pergunta e salva para as próximas vagas.",
+    allowLinkedInSearchOnly: "Usa LinkedIn só como fonte de descoberta; candidatura fica manual.",
+    requireApprovalBeforeApply: "Exige sua aprovação antes de qualquer tentativa de envio.",
+    allowQuickApplyAPIs: "Só deve ser ligado quando houver API oficial ou integração permitida.",
+    allowBrowserAutofill: "Prepara preenchimento assistido no navegador, sem burlar CAPTCHA.",
+    neverApplyOnLinkedInAutomatically: "Protege sua conta: nada de candidatura automática no LinkedIn."
+  };
+  return descriptions[key] || "Ative se esta opção fizer sentido para seu objetivo de busca e candidatura.";
+}
+
 function checkboxGrid(title, group, values) {
   return `<div class="field-block"><label>${title}</label><div class="choice-grid">${Object.entries(values || {}).map(([key, value]) => `
-    <label class="check-pill"><input type="checkbox" data-path="${group}.${key}" ${value ? "checked" : ""}> <span>${labelize(key)}</span></label>
+    <label class="check-pill described"><input type="checkbox" data-path="${group}.${key}" ${value ? "checked" : ""}> <span><strong>${labelize(key)}</strong><small>${escapeHtml(optionDescription(key))}</small></span></label>
   `).join("")}</div></div>`;
+}
+
+function settingToggle(label, path, value, description) {
+  return `<label class="check-pill described"><input type="checkbox" data-path="${path}" ${value ? "checked" : ""}> <span><strong>${label}</strong><small>${escapeHtml(description)}</small></span></label>`;
 }
 
 function riskClass(value) {
@@ -326,6 +383,7 @@ async function dashboard() {
     !summary.environment.openaiConfigured ? ["Configurar IA", "Adicione sua OPENAI_API_KEY para cartas e respostas mais fortes.", "settings"] : null,
     Number(summary.availableJobs) > 0 ? ["Revisar vagas", `${summary.availableJobs} vaga(s) novas fora da fila de candidatura.`, "jobs"] : null,
     Number(summary.awaitingApproval) > 0 ? ["Aprovar candidaturas", `${summary.awaitingApproval} candidatura(s) aguardando sua decisao.`, "applications"] : null,
+    Number(summary.pendingInformation) > 0 ? ["Responder memória", `${summary.pendingInformation} candidatura(s) precisam de dados seus.`, "applications"] : null,
     Number(summary.waitingRealJob) > 0 ? ["Validar fonte", `${summary.waitingRealJob} entrada(s) precisam de link real da vaga.`, "applications"] : null
   ].filter(Boolean);
 
@@ -339,6 +397,7 @@ async function dashboard() {
       <button id="scanNow" class="primary">Buscar vagas</button>
       <button data-tab="jobs">Vagas</button>
       <button data-tab="applications">Candidaturas</button>
+      <button data-tab="profiles">Perfis</button>
       <button data-tab="resume">Meu curriculo</button>
     </div>
   </div>
@@ -348,10 +407,11 @@ async function dashboard() {
     ${metricCard("Radar total", summary.jobs, "Historico encontrado", "blue")}
     ${metricCard("Preparadas", summary.applications, "Curriculo e carta gerados", "gold")}
     ${metricCard("Aguardando voce", summary.awaitingApproval, "Precisam aprovacao", "warning")}
+    ${metricCard("Faltam dados", summary.pendingInformation, "Perguntas para salvar na memoria", "warning")}
     ${metricCard("Aprovadas", summary.approved, "Liberadas por voce", "ready")}
     ${metricCard("Prontas", summary.ready, "Fonte oficial aberta", "accent")}
     ${metricCard("Candidatadas", summary.sent, `Ultima: ${formatDate(summary.lastAppliedAt)}`, "success")}
-    ${metricCard("Freelas", summary.informal, "Taxas e eventos", "blue")}
+    ${metricCard("Perfis", summary.profiles, `${summary.memoryAnswers} resposta(s) memorizada(s)`, "blue")}
   </div>
 
   <div class="command-grid">
@@ -376,6 +436,10 @@ async function dashboard() {
         <div><strong>${profile.resumes.length}</strong><span>curriculo(s) base</span></div>
         <div><strong>${profile.generatedResumes.length}</strong><span>CVs gerados</span></div>
         <div><strong>${profile.generatedCoverLetters.length}</strong><span>cartas geradas</span></div>
+      </div>
+      <div class="env-status">
+        <span class="state-chip ${summary.environment.openaiConfigured ? "success" : "warning"}">OpenAI ${summary.environment.openaiConfigured ? "ativa" : "pendente"}</span>
+        <span class="state-chip ${summary.environment.geminiConfigured ? "success" : "info"}">Gemini ${summary.environment.geminiConfigured ? "ativa" : "opcional"}</span>
       </div>
       <button data-tab="settings" class="full">Configurar IA e perfil</button>
     </section>
@@ -512,6 +576,29 @@ function showInlineResult(selector, message) {
   result.innerHTML = message;
 }
 
+function renderAutomationResult(data) {
+  const actions = data.actions || [];
+  const missingBlocks = actions
+    .filter((action) => Array.isArray(action.questions) && action.questions.length)
+    .map((action) => `<div class="memory-capture" data-profile-id="${action.profileId}">
+      <h4>Candidatura #${action.id}: faltam dados</h4>
+      <p>${escapeHtml(action.message)}</p>
+      <div class="form-grid">${action.questions.map((question) => `<label>${escapeHtml(question.question)}
+        <input data-memory-key="${escapeHtml(question.key)}" data-memory-question="${escapeHtml(question.question)}" data-memory-category="${escapeHtml(question.category)}" data-memory-field-type="${escapeHtml(question.fieldType)}">
+      </label>`).join("")}</div>
+      <button data-save-memory class="primary">Salvar respostas na memória</button>
+    </div>`)
+    .join("");
+  const lines = actions.map((action) => `<li>
+    <strong>#${action.id}</strong>
+    <span class="state-chip ${action.status === "autofill_pronto" || action.status === "auto_apply_pronto" ? "ready" : action.status === "precisa_informacao" ? "warning" : "info"}">${escapeHtml(action.status)}</span>
+    ${escapeHtml(action.message)}
+    <small>${escapeHtml(action.nextStep || "")}</small>
+    ${action.url ? `<a href="${escapeHtml(action.url)}" target="_blank" rel="noreferrer">abrir fonte</a>` : ""}
+  </li>`).join("");
+  return `<strong>Modo cirúrgico executado para ${escapeHtml(data.profile?.name || "perfil ativo")}</strong><ul>${lines}</ul>${missingBlocks}`;
+}
+
 function applicationGuidance(row) {
   if (row.source === "google-assisted-search") return "Abra a busca do Google, escolha a vaga real na pagina de resultados e importe o link especifico em data/manual-urls.txt.";
   if (["sine", "infojobs", "jobs99", "rh-agencies-curitiba"].includes(row.source)) return "Esta entrada e uma busca assistida. Abra o link, escolha uma vaga real e importe o link especifico para personalizar a candidatura.";
@@ -571,7 +658,9 @@ async function applications(initialMessage = "") {
         <button id="selectAllApplications">Selecionar todas</button>
         <button id="clearApplications">Limpar</button>
         <button id="approveApplications" class="primary">Aprovar</button>
+        <button id="autoApplyApplications" class="primary">Modo cirurgico</button>
         <button id="assistedApplyApplications">Candidatar-se com IA</button>
+        <button id="retryApplications">Candidatar novamente</button>
         <button id="markSentApplications">Marcar enviada</button>
         <button id="rejectApplications">Rejeitar</button>
       </div>
@@ -647,11 +736,97 @@ async function applications(initialMessage = "") {
   document.querySelector("#approveApplications").onclick = () => postSelection("/api/applications/approve", (data) => `<strong>${data.approved} candidatura(s) aprovada(s).</strong> Agora voce pode clicar em Candidatar-se com IA.`);
   document.querySelector("#rejectApplications").onclick = () => postSelection("/api/applications/reject", (data) => `<strong>${data.rejected} candidatura(s) rejeitada(s).</strong>`);
   document.querySelector("#markSentApplications").onclick = () => postSelection("/api/applications/mark-sent", (data) => `<strong>${data.sent} candidatura(s) marcada(s) como enviada(s).</strong>`);
+  document.querySelector("#retryApplications").onclick = () => postSelection("/api/applications/retry", (data) => `<strong>${data.retried} candidatura(s) recolocada(s) para tentar novamente.</strong> Rode o modo cirurgico para revisar dados e canal.`);
+  document.querySelector("#autoApplyApplications").onclick = () => postSelection("/api/applications/auto-apply", renderAutomationResult);
   document.querySelector("#assistedApplyApplications").onclick = () => postSelection("/api/applications/assisted-apply", (data) => {
     const lines = (data.actions || []).map((action) => `<li><strong>#${action.id}</strong> <span class="state-chip ${action.status === "pronta_para_formulario" ? "ready" : action.status === "ja_candidatado" ? "success" : action.status === "bloqueada" ? "warning" : "info"}">${escapeHtml(action.status)}</span>: ${escapeHtml(action.message)}<small>${escapeHtml(action.nextStep || "")}</small>${action.url ? `<a href="${escapeHtml(action.url)}" target="_blank" rel="noreferrer">abrir fonte</a>` : ""}</li>`).join("");
     return `<strong>Resultado da candidatura assistida</strong><ul>${lines}</ul>`;
   });
   applyFilters();
+}
+
+async function profilesPage() {
+  const data = await json("/api/profiles");
+  const memory = await json(`/api/answer-memory?profileId=${data.active?.id || 1}`);
+  app.innerHTML = `<div class="command-hero resume-hero">
+    <div class="hero-copy">
+      <span class="eyebrow">Perfis de candidatura</span>
+      <h2>Pessoas, respostas e currículos separados</h2>
+      <p>Use perfis distintos para cada pessoa. A memória de respostas fica vinculada ao perfil ativo.</p>
+    </div>
+    <div class="hero-actions">
+      <button data-tab="applications" class="primary">Usar em candidaturas</button>
+      <button data-tab="settings">Configurar busca</button>
+    </div>
+  </div>
+
+  <div class="two-column">
+    <section>
+      <div class="section-head"><div><span class="eyebrow">Usuários</span><h3>Perfis existentes</h3></div></div>
+      <div class="profile-card-grid">${(data.profiles || []).map((profile) => `<div class="profile-card ${Number(profile.is_active) === 1 ? "active-profile" : ""}">
+        <div class="section-head">
+          <div><strong>${escapeHtml(profile.label || profile.name)}</strong><small>${escapeHtml(profile.name)} · ${escapeHtml(profile.email || "sem e-mail")}</small></div>
+          <span class="state-chip ${Number(profile.is_active) === 1 ? "success" : "info"}">${Number(profile.is_active) === 1 ? "Ativo" : "Disponível"}</span>
+        </div>
+        <div class="profile-grid compact">
+          <div><span>Telefone</span><strong>${escapeHtml(profile.phone || "Falta")}</strong></div>
+          <div><span>Cidade</span><strong>${escapeHtml(profile.city || "Falta")}/${escapeHtml(profile.state || "")}</strong></div>
+          <div><span>Memória</span><strong>${profile.memory_count || 0}</strong></div>
+          <div><span>Candidaturas</span><strong>${profile.applications_count || 0}</strong></div>
+        </div>
+        ${Number(profile.is_active) === 1 ? "" : `<button data-activate-profile="${profile.id}" class="full">Ativar perfil</button>`}
+      </div>`).join("")}</div>
+    </section>
+
+    <section>
+      <div class="section-head"><div><span class="eyebrow">Novo perfil</span><h3>Criar usuário</h3></div></div>
+      <div class="form-grid single">
+        <label>Nome do perfil<input id="profileLabel" placeholder="Ex: Giasi principal"></label>
+        <label>Nome completo<input id="profileName"></label>
+        <label>E-mail<input id="profileEmail"></label>
+        <label>Telefone<input id="profilePhone"></label>
+        <label>LinkedIn<input id="profileLinkedin"></label>
+        <label>Cidade<input id="profileCity" value="Curitiba"></label>
+        <label>Estado<input id="profileState" value="PR"></label>
+        <label>Currículo base<input id="profileResume" placeholder="CV-Hospitalidade.pdf"></label>
+        <label class="field-wide">Resumo<textarea id="profileSummary" rows="5"></textarea></label>
+        <label class="check-line"><input id="profileActive" type="checkbox" checked> Tornar ativo agora</label>
+        <button id="createProfile" class="primary">Criar perfil</button>
+      </div>
+    </section>
+  </div>
+
+  <section>
+    <div class="section-head"><div><span class="eyebrow">Memória do perfil ativo</span><h3>Respostas salvas</h3></div><span class="state-chip ready">${escapeHtml(data.active?.name || "Perfil")}</span></div>
+    <div class="stack-list">${(memory.answers || []).map((answer) => `<div class="stack-item">
+      <div><strong>${escapeHtml(answer.question_key)}</strong><small>${escapeHtml(answer.question_text || answer.category || "Resposta memorizada")}</small></div>
+      <span>${escapeHtml(answer.answer_text)}</span>
+    </div>`).join("") || `<div class="empty-mini">Nenhuma resposta memorizada ainda. Quando uma candidatura pedir algo novo, o agente pergunta e salva aqui.</div>`}</div>
+  </section>`;
+
+  document.querySelectorAll("[data-activate-profile]").forEach((button) => button.addEventListener("click", async () => {
+    await json(`/api/profiles/${button.dataset.activateProfile}/activate`, { method: "POST" });
+    toast("Perfil ativado.", "success");
+    await profilesPage();
+  }));
+  document.querySelector("#createProfile").onclick = async () => {
+    const payload = {
+      label: document.querySelector("#profileLabel").value,
+      name: document.querySelector("#profileName").value,
+      email: document.querySelector("#profileEmail").value,
+      phone: document.querySelector("#profilePhone").value,
+      linkedin: document.querySelector("#profileLinkedin").value,
+      city: document.querySelector("#profileCity").value,
+      state: document.querySelector("#profileState").value,
+      country: "Brasil",
+      resume_file: document.querySelector("#profileResume").value,
+      summary: document.querySelector("#profileSummary").value,
+      is_active: document.querySelector("#profileActive").checked
+    };
+    await json("/api/profiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    toast("Perfil criado.", "success");
+    await profilesPage();
+  };
 }
 
 async function resumePage() {
@@ -780,6 +955,8 @@ async function settings() {
         <div class="form-grid">
           <div class="field"><label>Chave OpenAI</label><input id="envOpenaiKey" type="password" placeholder="${env.openaiConfigured ? "Chave configurada. Digite outra para trocar." : "Cole sua OPENAI_API_KEY"}"><small>Nao vai para o GitHub. Fica no .env ou nos segredos do servidor online.</small></div>
           <div class="field"><label>Modelo OpenAI</label><input id="envOpenaiModel" value="${escapeHtml(env.openaiModel || "gpt-4o-mini")}"></div>
+          <div class="field"><label>Chave Gemini</label><input id="envGeminiKey" type="password" placeholder="${env.geminiConfigured ? "Chave configurada. Digite outra para trocar." : "Cole sua GEMINI_API_KEY"}"><small>Usada como apoio/fallback para análise e respostas quando o módulo estiver habilitado.</small></div>
+          <div class="field"><label>Modelo Gemini</label><input id="envGeminiModel" value="${escapeHtml(env.geminiModel || "gemini-1.5-flash")}"></div>
           <div class="field"><label>Google Search API Key</label><input id="envGoogleKey" type="password" placeholder="${env.googleSearchConfigured ? "Configurada. Digite outra para trocar." : "Opcional"}"></div>
           <div class="field"><label>Google Search Engine ID</label><input id="envGoogleCx" value=""></div>
           <div class="field"><label>Banco online DATABASE_URL</label><input id="envDatabaseUrl" value="${escapeHtml(env.databaseUrl || "file:./data/jobs.sqlite")}"><small>Para Render/Railway use um caminho persistente, ex: file:/var/data/jobs.sqlite.</small></div>
@@ -787,6 +964,7 @@ async function settings() {
         </div>
         <div class="env-status">
           <span class="state-chip ${env.openaiConfigured ? "success" : "warning"}">OpenAI ${env.openaiConfigured ? "ativa" : "pendente"}</span>
+          <span class="state-chip ${env.geminiConfigured ? "success" : "info"}">Gemini ${env.geminiConfigured ? "ativa" : "opcional"}</span>
           <span class="state-chip ${env.googleSearchConfigured ? "success" : "info"}">Google Search ${env.googleSearchConfigured ? "ativo" : "opcional"}</span>
           <span class="state-chip ${env.envExists ? "success" : "warning"}">.env ${env.envExists ? "criado" : "nao criado"}</span>
         </div>
@@ -863,13 +1041,18 @@ async function settings() {
           ${numberInput("Aplicar so acima da nota", "strategy.onlyApplyAboveScore", data.strategy.onlyApplyAboveScore)}
         </div>
         <div class="choice-grid">
-          <label class="check-pill"><input type="checkbox" data-path="agent.enabled" ${data.agent.enabled ? "checked" : ""}> Agente ativo</label>
-          <label class="check-pill"><input type="checkbox" data-path="agent.paused" ${data.agent.paused ? "checked" : ""}> Pausar agente</label>
-          <label class="check-pill"><input type="checkbox" data-path="agent.dryRun" ${data.agent.dryRun ? "checked" : ""}> Modo seguro/dry-run</label>
-          <label class="check-pill"><input type="checkbox" data-path="applications.prepareApplications" ${getPath(data, "applications.prepareApplications") ? "checked" : ""}> Preparar candidaturas</label>
-          <label class="check-pill"><input type="checkbox" data-path="applications.autoApply" ${getPath(data, "applications.autoApply") ? "checked" : ""}> Auto apply</label>
-          <label class="check-pill"><input type="checkbox" data-path="applications.requireApprovalBeforeApply" ${getPath(data, "applications.requireApprovalBeforeApply") ? "checked" : ""}> Exigir aprovacao antes de aplicar</label>
-          <label class="check-pill"><input type="checkbox" data-path="applications.requireApprovalBeforeSendingEmail" ${getPath(data, "applications.requireApprovalBeforeSendingEmail") ? "checked" : ""}> Exigir aprovacao para e-mail</label>
+          ${settingToggle("Agente ativo", "agent.enabled", data.agent.enabled, "Permite que o agente rode buscas, prepare candidaturas e atualize o painel.")}
+          ${settingToggle("Pausar agente", "agent.paused", data.agent.paused, "Interrompe rotinas automáticas sem apagar suas configurações.")}
+          ${settingToggle("Modo seguro/dry-run", "agent.dryRun", data.agent.dryRun, "Simula ações e registra decisões antes de qualquer envio real.")}
+          ${settingToggle("Preparar candidaturas", "applications.prepareApplications", getPath(data, "applications.prepareApplications"), "Gera currículo, carta e pacote de candidatura para vagas aprovadas.")}
+          ${settingToggle("Auto apply permitido", "applications.autoApply", getPath(data, "applications.autoApply"), "Só tenta enviar quando a plataforma permitir, sem CAPTCHA e com dados completos.")}
+          ${settingToggle("Auto apply quando permitido", "applications.autoApplyWhenAllowed", getPath(data, "applications.autoApplyWhenAllowed"), "Ativa a lógica cirúrgica: enviar apenas onde houver canal seguro.")}
+          ${settingToggle("Preencher formulários", "applications.autoFillFormsWhenAllowed", getPath(data, "applications.autoFillFormsWhenAllowed"), "Monta respostas e campos para formulário oficial da vaga.")}
+          ${settingToggle("Perguntar e memorizar", "applications.askAndRememberMissingFields", getPath(data, "applications.askAndRememberMissingFields"), "Quando faltar informação, pergunta uma vez e salva para futuras vagas.")}
+          ${settingToggle("LinkedIn só busca", "applications.allowLinkedInSearchOnly", getPath(data, "applications.allowLinkedInSearchOnly"), "Encontra vagas no LinkedIn, mas você abre e se candidata manualmente.")}
+          ${settingToggle("Exigir aprovação", "applications.requireApprovalBeforeApply", getPath(data, "applications.requireApprovalBeforeApply"), "Mantém você no controle antes de qualquer candidatura.")}
+          ${settingToggle("APIs oficiais", "applications.allowQuickApplyAPIs", getPath(data, "applications.allowQuickApplyAPIs"), "Use apenas com integração oficial/permitida pela plataforma.")}
+          ${settingToggle("Autofill no navegador", "applications.allowBrowserAutofill", getPath(data, "applications.allowBrowserAutofill"), "Ajuda a preencher, mas não burla login, CAPTCHA ou regras de site.")}
         </div>
       </div>
 
@@ -916,9 +1099,11 @@ async function settings() {
   };
   document.querySelector("#saveEnvConfig").onclick = async () => {
     const payload = {
-      openaiApiKey: document.querySelector("#envOpenaiKey").value,
-      openaiModel: document.querySelector("#envOpenaiModel").value,
-      googleSearchApiKey: document.querySelector("#envGoogleKey").value,
+          openaiApiKey: document.querySelector("#envOpenaiKey").value,
+          openaiModel: document.querySelector("#envOpenaiModel").value,
+          geminiApiKey: document.querySelector("#envGeminiKey").value,
+          geminiModel: document.querySelector("#envGeminiModel").value,
+          googleSearchApiKey: document.querySelector("#envGoogleKey").value,
       googleSearchEngineId: document.querySelector("#envGoogleCx").value,
       databaseUrl: document.querySelector("#envDatabaseUrl").value,
       port: document.querySelector("#envPort").value
@@ -949,6 +1134,7 @@ async function load(tab) {
     if (tab === "jobs") return jobs();
     if (tab === "informal") return informal();
     if (tab === "applications") return applications();
+    if (tab === "profiles") return profilesPage();
     if (tab === "resume") return resumePage();
     if (tab === "settings") return settings();
     if (tab === "logs") return logs();
@@ -974,8 +1160,38 @@ document.querySelector("#themeToggle").addEventListener("click", () => {
 app.addEventListener("click", (event) => {
   const detail = event.target.closest("[data-detail]");
   const tab = event.target.closest("[data-tab]");
+  const retry = event.target.closest("[data-retry]");
+  const saveMemory = event.target.closest("[data-save-memory]");
   if (detail) jobDetail(detail.dataset.detail);
   if (tab) load(tab.dataset.tab);
+  if (retry) {
+    json("/api/applications/retry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [Number(retry.dataset.retry)] }) })
+      .then(() => {
+        toast("Candidatura recolocada para tentar novamente.", "success");
+        return applications();
+      })
+      .catch((error) => toast(escapeHtml(error.message), "error"));
+  }
+  if (saveMemory) {
+    const capture = saveMemory.closest(".memory-capture");
+    const answers = [...capture.querySelectorAll("[data-memory-key]")]
+      .map((input) => ({
+        key: input.dataset.memoryKey,
+        question: input.dataset.memoryQuestion,
+        category: input.dataset.memoryCategory,
+        fieldType: input.dataset.memoryFieldType,
+        answer: input.value
+      }))
+      .filter((item) => item.answer.trim());
+    json("/api/answer-memory/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: Number(capture.dataset.profileId), answers })
+    }).then(() => {
+      toast("Respostas salvas na memória do perfil.", "success");
+      return applications();
+    }).catch((error) => toast(escapeHtml(error.message), "error"));
+  }
 });
 
 load("dashboard");

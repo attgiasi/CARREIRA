@@ -38,7 +38,11 @@ export class CareerDatabase {
     const existing = new Set(this.query<{ name: string }>("PRAGMA table_info(applications)").map((column) => String(column.name)));
     const columns: Array<[string, string]> = [
       ["created_at", "TEXT"],
-      ["updated_at", "TEXT"]
+      ["updated_at", "TEXT"],
+      ["user_profile_id", "INTEGER"],
+      ["last_attempt_at", "TEXT"],
+      ["automation_mode", "TEXT"],
+      ["retry_count", "INTEGER DEFAULT 0"]
     ];
     for (const [name, definition] of columns) {
       if (!existing.has(name)) this.db.run(`ALTER TABLE applications ADD COLUMN ${name} ${definition}`);

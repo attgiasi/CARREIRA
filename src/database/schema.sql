@@ -73,10 +73,14 @@ CREATE TABLE IF NOT EXISTS applications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   job_id INTEGER,
   informal_opportunity_id INTEGER,
+  user_profile_id INTEGER,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
   applied_at TEXT,
+  last_attempt_at TEXT,
   application_status TEXT,
+  automation_mode TEXT,
+  retry_count INTEGER DEFAULT 0,
   cv_version TEXT,
   generated_resume_path TEXT,
   cover_letter_path TEXT,
@@ -84,6 +88,53 @@ CREATE TABLE IF NOT EXISTS applications (
   sent_by_agent INTEGER DEFAULT 0,
   source_platform TEXT,
   notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS candidate_profiles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  label TEXT,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  linkedin TEXT,
+  city TEXT,
+  state TEXT,
+  country TEXT,
+  summary TEXT,
+  resume_file TEXT,
+  is_active INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  raw_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS answer_memory (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_profile_id INTEGER DEFAULT 1,
+  question_key TEXT NOT NULL,
+  question_text TEXT,
+  answer_text TEXT,
+  field_type TEXT DEFAULT 'text',
+  category TEXT,
+  usage_count INTEGER DEFAULT 0,
+  approved_by_user INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  last_used_at TEXT,
+  UNIQUE(user_profile_id, question_key)
+);
+
+CREATE TABLE IF NOT EXISTS application_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  application_id INTEGER,
+  user_profile_id INTEGER,
+  mode TEXT,
+  status TEXT,
+  result_message TEXT,
+  missing_questions_json TEXT,
+  filled_fields_json TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  completed_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS companies (

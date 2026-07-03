@@ -8,6 +8,7 @@ O GitHub guarda o codigo e roda automacoes pelo GitHub Actions, mas ele nao hosp
 2. Entre no Render e crie um Blueprint usando `render.yaml`.
 3. Configure os segredos do servico:
    - `OPENAI_API_KEY`
+   - `GEMINI_API_KEY`
    - `GOOGLE_SEARCH_API_KEY`, se quiser importacao automatica pelo Google Search.
    - `GOOGLE_SEARCH_ENGINE_ID`, se quiser importacao automatica pelo Google Search.
 4. Mantenha `DATABASE_URL=file:/var/data/jobs.sqlite`.
@@ -43,3 +44,7 @@ Nunca commite `.env`. Use:
 ## Sobre candidaturas automaticas
 
 O app prepara curriculo, carta, respostas e status. O envio externo depende de canal oficial da vaga, permissao da plataforma, login, formulario e possiveis CAPTCHAs. O agente nao burla CAPTCHA, nao automatiza LinkedIn e nao envia dados pessoais sem aprovacao.
+
+## Perfis e memoria online
+
+Perfis de candidatura, respostas memorizadas, tentativas de candidatura e status ficam no SQLite persistente configurado em `DATABASE_URL`. Em servidor online, use disco persistente; em runner temporario do GitHub Actions, esses dados viram artefato e nao substituem um banco sempre ligado.
