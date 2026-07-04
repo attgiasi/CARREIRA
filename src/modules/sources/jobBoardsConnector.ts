@@ -97,14 +97,22 @@ function directBoardSearchUrl(board: Board, role: string, location: string, goog
   if (board === "linkedinSearch") return `https://www.linkedin.com/jobs/search/?keywords=${keywords}&location=${place}`;
   if (board === "indeedSearch") return `https://br.indeed.com/jobs?q=${keywords}&l=${place}`;
   if (board === "vagasCom") return `https://www.vagas.com.br/vagas-de-${keywords}?q=${keywords}`;
+  if (board === "infojobs") return `https://www.infojobs.com.br/vagas.aspx?palabra=${keywords}&provincia=${place}`;
   return googleSearchUrl(googleQuery);
+}
+
+function siteQuery(domain: string): string {
+  return domain
+    .split(/\s+OR\s+/i)
+    .map((part) => `site:${part.trim()}`)
+    .join(" OR ");
 }
 
 export function fetchJobBoardSearches(settings: AgentSettings, board: Board): RawJob[] {
   const config = boardConfig[board];
   const pairs = limitedSearchPairs(settings, 18);
   const results = pairs.map(({ role, location }) => {
-    const query = `site:(${config.domain}) "${role}" "${location}" vaga emprego`;
+    const query = `(${siteQuery(config.domain)}) ${role} ${location} vaga emprego candidatar`;
     const url = directBoardSearchUrl(board, role, location, query);
     return {
       externalId: `${board}-${role}-${location}`,

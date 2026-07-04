@@ -13,20 +13,19 @@ interface GoogleSearchItem {
 function buildQueries(settings: AgentSettings): string[] {
   const pairs = limitedSearchPairs(settings, 24);
   const base = pairs.flatMap(({ role, location }) => [
-    `"${role}" vaga emprego "${location}"`,
-    `"${role}" "${location}" "candidatar"`,
-    `"${role}" "${location}" "trabalhe conosco"`,
-    `"${role}" "${location}" "processo seletivo"`
+    `"${role}" vaga emprego "${location}" candidatar`,
+    `"${role}" "${location}" "trabalhe conosco" vaga`,
+    `"${role}" "${location}" "processo seletivo" vaga`
   ]);
   const platformFocused = pairs.slice(0, 10).flatMap(({ role, location }) => [
-    `site:linkedin.com/jobs "${role}" "${location}"`,
-    `site:gupy.io "${role}" "${location}"`,
-    `site:solides.jobs "${role}" "${location}"`,
-    `site:infojobs.com.br "${role}" "${location}"`,
-    `site:99jobs.com "${role}" "${location}"`,
-    `site:vagas.com.br "${role}" "${location}"`,
-    `site:br.indeed.com "${role}" "${location}"`,
-    `site:netvagas.com.br "${role}" "${location}"`
+    `site:linkedin.com/jobs/view ${role} ${location}`,
+    `site:gupy.io/jobs ${role} ${location}`,
+    `site:solides.jobs/vaga ${role} ${location}`,
+    `site:infojobs.com.br/vaga-de ${role} ${location}`,
+    `site:99jobs.com/jobs ${role} ${location}`,
+    `site:vagas.com.br/vagas ${role} ${location}`,
+    `site:br.indeed.com/viewjob ${role} ${location}`,
+    `site:netvagas.com.br/vaga ${role} ${location}`
   ]);
   return [
     ...base,
@@ -39,6 +38,29 @@ function buildQueries(settings: AgentSettings): string[] {
   ].slice(0, 90);
 }
 
+function isLikelyDirectJobUrl(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.replace(/^www\./, "");
+    const path = url.pathname.toLowerCase();
+    if (host.includes("google.") || path.includes("/search")) return false;
+    if (host.includes("linkedin.com") && path.includes("/jobs/view")) return true;
+    if (host.includes("infojobs.com.br") && path.includes("/vaga-de-")) return true;
+    if (host.includes("gupy.io") && /\/jobs?\//.test(path)) return true;
+    if (host.includes("solides.jobs") && path.includes("/vaga")) return true;
+    if (host.includes("vagas.com.br") && path.includes("/vagas/")) return true;
+    if (host.includes("indeed.com") && (path.includes("/viewjob") || url.searchParams.has("jk"))) return true;
+    if (host.includes("netvagas.com.br") && path.includes("/vaga")) return true;
+    if (host.includes("jobs.lever.co")) return true;
+    if (host.includes("boards.greenhouse.io") && path.includes("/jobs/")) return true;
+    if (host.includes("99jobs.com") && path.includes("/jobs/")) return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 async function searchGoogle(query: string): Promise<RawJob[]> {
   const url = new URL("https://www.googleapis.com/customsearch/v1");
   url.searchParams.set("key", secrets.googleSearchApiKey);
@@ -48,16 +70,18 @@ async function searchGoogle(query: string): Promise<RawJob[]> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Google Search retornou ${response.status}`);
   const data = await response.json() as { items?: GoogleSearchItem[] };
-  return (data.items ?? []).map((item) => ({
-    externalId: `google-${item.link ?? item.title ?? query}`,
-    title: item.title ?? `Resultado Google: ${query}`,
-    company: item.displayLink ?? "Resultado do Google",
-    location: "Detectado no resultado",
-    source: "google-search",
-    url: item.link ?? googleSearchUrl(query),
-    description: item.snippet ?? `Resultado encontrado para: ${query}`,
-    raw: { query, item }
-  }));
+  return (data.items ?? [])
+    .filter((item) => isLikelyDirectJobUrl(item.link))
+    .map((item) => ({
+      externalId: `google-real-${item.link ?? item.title ?? query}`,
+      title: item.title ?? `Vaga real via Google: ${query}`,
+      company: item.displayLink ?? "Resultado do Google",
+      location: "Detectado no resultado",
+      source: "google-real-job",
+      url: item.link ?? "",
+      description: item.snippet ?? `Vaga real encontrada no Google para: ${query}`,
+      raw: { query, item, directJobResult: true }
+    }));
 }
 
 export async function fetchGoogleJobsSearch(settings: AgentSettings): Promise<RawJob[]> {

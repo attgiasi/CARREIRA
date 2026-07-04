@@ -50,17 +50,18 @@ function parseHttpUrl(value: unknown): string {
   return parsed.toString();
 }
 
-function manualJobFromUrl(url: string) {
+function manualJobFromUrl(url: string, body: Record<string, unknown> = {}) {
   const host = new URL(url).hostname.replace(/^www\./, "");
   return {
     externalId: `manual-${url}`,
-    title: `Vaga real importada: ${host}`,
-    company: "Empresa a confirmar",
-    location: "A confirmar",
-    source: "manual",
+    title: String(body.title ?? `Vaga real importada: ${host}`),
+    company: String(body.company ?? host),
+    location: String(body.location ?? "A confirmar"),
+    source: String(body.source ?? "manual-real-job"),
     url,
-    description: `Link oficial importado pelo painel para candidatura real: ${url}`,
-    raw: { url, importedAt: new Date().toISOString(), importedFrom: "dashboard" }
+    description: String(body.description ?? `Link oficial importado pelo painel para candidatura real: ${url}`),
+    salary: String(body.salary ?? ""),
+    raw: { url, importedAt: new Date().toISOString(), importedFrom: "dashboard", body }
   };
 }
 
@@ -279,7 +280,11 @@ apiRouter.get("/summary", async (_req, res) => {
   const rejected = db.query("SELECT COUNT(*) as total FROM applications WHERE approval_status = 'rejeitado_pelo_usuario'")[0]?.total ?? 0;
   const sent = db.query("SELECT COUNT(*) as total FROM applications WHERE application_status = 'Candidatura enviada' OR sent_by_agent = 1")[0]?.total ?? 0;
   const waitingRealJob = db.query("SELECT COUNT(*) as total FROM applications WHERE application_status = 'Aguardando vaga real da fonte'")[0]?.total ?? 0;
-  const ready = db.query("SELECT COUNT(*) as total FROM applications WHERE application_status = 'Pronta para envio assistido'")[0]?.total ?? 0;
+  const ready = db.query(`
+    SELECT COUNT(*) as total
+    FROM applications
+    WHERE application_status IN ('Pronta para envio assistido', 'Preenchimento automático pronto', 'Candidatura automática pronta')
+  `)[0]?.total ?? 0;
   const pendingInformation = db.query("SELECT COUNT(*) as total FROM applications WHERE application_status = 'Aguardando resposta do usuário'")[0]?.total ?? 0;
   const informal = db.query("SELECT COUNT(*) as total FROM informal_opportunities")[0]?.total ?? 0;
   const profiles = db.query("SELECT COUNT(*) as total FROM candidate_profiles")[0]?.total ?? 0;
@@ -549,7 +554,7 @@ apiRouter.post("/manual-urls", async (req, res) => {
 
   const settings = loadSettings();
   const db = await CareerDatabase.open();
-  const job = normalizeJob(manualJobFromUrl(url), settings);
+  const job = normalizeJob(manualJobFromUrl(url, req.body as Record<string, unknown>), settings);
   db.insertJob(job);
   const saved = db.query<Record<string, unknown>>("SELECT id, title, source, url FROM jobs WHERE external_id = ? LIMIT 1", [job.externalId])[0];
   res.json({

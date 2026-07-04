@@ -263,6 +263,12 @@ function applicationState(row) {
   if (row.application_status === "Pronta para envio assistido") {
     return { label: "Pronta", tone: "ready", detail: "Abrir fonte oficial" };
   }
+  if (row.application_status === "Preenchimento automático pronto") {
+    return { label: "Preenchimento pronto", tone: "ready", detail: "Vaga real com dados preparados" };
+  }
+  if (row.application_status === "Candidatura automática pronta") {
+    return { label: "Auto apply pronto", tone: "ready", detail: "Aguardando permissão final" };
+  }
   if (row.application_status === "Aguardando vaga real da fonte") {
     return { label: "Precisa vaga real", tone: "warning", detail: "Fonte assistida" };
   }
