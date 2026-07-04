@@ -2,12 +2,32 @@ import fs from "node:fs";
 import path from "node:path";
 import { AgentSettings, NormalizedJob } from "../../types.js";
 
+function pitchFor(job: NormalizedJob): string {
+  const text = `${job.title} ${job.description} ${job.careerTrack}`.toLowerCase();
+  if (/customer|success|cx|relacionamento|ouvidoria|atendimento|suporte|sac/.test(text)) {
+    return "Minha experiência em atendimento, hospitalidade e operação me treinou para ouvir bem, entender contexto rapidamente, comunicar com clareza e transformar contato com cliente em experiência consistente.";
+  }
+  if (/backoffice|fraude|risco|opera[cç][aã]o|processo|erp|dados|controle/.test(text)) {
+    return "Tenho perfil organizado, analítico e cuidadoso com padrões, processos e informações. Minha vivência operacional me ajuda a enxergar impacto no cliente, prevenir falhas e sustentar rotina com responsabilidade.";
+  }
+  if (/gerente|gest[aã]o|supervisor|coordena|lideran[cç]a|comercial|farmer|consultor/.test(text)) {
+    return "Minha trajetória reúne liderança operacional, treinamento, atendimento consultivo e visão prática de negócio. Sei conduzir rotina, apoiar pessoas, priorizar problemas e manter padrão de entrega.";
+  }
+  return "Minha trajetória em hospitalidade, coquetelaria, eventos e atendimento me deu repertório técnico, agilidade, postura profissional e leitura de cliente para atuar em ambientes de alta exigência.";
+}
+
 export function generateCoverLetter(job: NormalizedJob, settings: AgentSettings): string {
   return `Olá, tudo bem?
 
 Me chamo ${settings.profile.name}. Tenho mais de 12 anos de experiência em hospitalidade, coquetelaria, atendimento ao cliente, eventos, gestão de operação de bar, treinamento e padronização.
 
-Tenho interesse na oportunidade de ${job.title} na ${job.company}, pois ela conversa com minha experiência prática em operação, atendimento e rotina de alta demanda. Fico à disposição para conversar e entender melhor os próximos passos.
+Tenho interesse na oportunidade de ${job.title} na ${job.company}, pois ela conversa diretamente com minha experiência prática em operação, atendimento, relacionamento e rotina de alta demanda.
+
+${pitchFor(job)}
+
+Posso contribuir com postura profissional, comunicação clara, senso de dono, organização e foco em experiência do cliente. Tenho facilidade para aprender processos, representar bem a empresa e atuar com consistência em contextos que exigem atenção, agilidade e confiança.
+
+Fico à disposição para conversar e mostrar como minha vivência pode gerar valor para a equipe.
 
 Atenciosamente,
 ${settings.profile.name}`;

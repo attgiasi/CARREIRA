@@ -9,7 +9,11 @@ function existingResume(preferred: string, aliases: string[]): string {
   const exact = files.find((file) => file.toLowerCase() === path.basename(preferred).toLowerCase());
   if (exact) return `resumes/${exact}`;
   const match = files.find((file) => aliases.some((alias) => file.toLowerCase().includes(alias)));
-  return match ? `resumes/${match}` : preferred;
+  if (match) return `resumes/${match}`;
+  const premium = files.find((file) => /(premium|master|principal|hospitalidade)/i.test(file) && /\.(pdf|docx?|md)$/i.test(file));
+  if (premium) return `resumes/${premium}`;
+  const anyResume = files.find((file) => /\.(pdf|docx?|md)$/i.test(file) && file.toLowerCase() !== "readme.md");
+  return anyResume ? `resumes/${anyResume}` : preferred;
 }
 
 export function chooseBaseCv(job: Pick<NormalizedJob, "careerTrack" | "title" | "description">): string {

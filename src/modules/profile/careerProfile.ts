@@ -11,12 +11,23 @@ export function realExperienceKeywords(): string[] {
     "bartender",
     "mixologia",
     "atendimento ao cliente",
+    "experiência do cliente",
+    "customer experience",
+    "customer success",
+    "sucesso do cliente",
     "eventos",
     "gestão de bar",
+    "liderança operacional",
     "treinamento",
     "padronização",
     "operação",
     "backoffice",
-    "análise operacional"
+    "análise operacional",
+    "rotina de alta demanda",
+    "controle de qualidade",
+    "relacionamento com cliente",
+    "prevenção de falhas",
+    "organização de processos",
+    "comunicação consultiva"
   ];
 }
