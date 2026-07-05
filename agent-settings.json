@@ -221,6 +221,9 @@
     "trabalhaBrasil": true,
     "glassdoorSearch": true,
     "empregosComBr": true,
+    "solidesJobs": true,
+    "ablerJobs": true,
+    "pandapeJobs": true,
     "rhAgenciesCuritiba": true,
     "companyHunter": true,
     "linkedinEmailAlertsOnly": true,
@@ -231,7 +234,6 @@
   },
   "strategy": {
     "mode": "quality_over_quantity",
-    "performanceMode": "cirurgico_lideranca_comercial",
     "searchAggressiveness": "alta",
     "maxApplicationsPerDay": 5,
     "onlyPrepareAboveScore": 75,
@@ -244,7 +246,6 @@
   "applications": {
     "prepareApplications": true,
     "createGmailDrafts": true,
-    "everythingMode": false,
     "autoApply": false,
     "autoApplyWhenAllowed": true,
     "autoFillFormsWhenAllowed": true,

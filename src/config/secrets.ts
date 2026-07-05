@@ -16,6 +16,7 @@ function currentSecrets() {
     googleCalendarEnabled: process.env.GOOGLE_CALENDAR_ENABLED === "true",
     googleSearchApiKey: process.env.GOOGLE_SEARCH_API_KEY ?? "",
     googleSearchEngineId: process.env.GOOGLE_SEARCH_ENGINE_ID ?? "",
+    accountVaultKey: process.env.ACCOUNT_VAULT_KEY ?? "",
     databaseUrl: process.env.DATABASE_URL ?? "file:./data/jobs.sqlite",
     dashboardPort: Number(dashboardPort)
   };

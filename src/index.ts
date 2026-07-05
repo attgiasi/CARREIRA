@@ -22,10 +22,14 @@ import { buildApplicationPacket } from "./modules/applications/applicationBuilde
 import { enqueueApplication } from "./modules/applications/approvalQueue.js";
 import { generateDailySummary } from "./modules/reports/dailySummary.js";
 import { generateWeeklyMarketRadar } from "./modules/reports/weeklyMarketRadar.js";
-import { RawJob } from "./types.js";
+import { AgentSettings, RawJob } from "./types.js";
 
-async function collectRawJobs(): Promise<RawJob[]> {
-  const settings = loadSettings();
+function settingsForUser(db: CareerDatabase, userId: number): AgentSettings {
+  const row = db.query<Record<string, unknown>>("SELECT settings_json FROM user_settings WHERE user_id = ? LIMIT 1", [userId])[0];
+  return row?.settings_json ? JSON.parse(String(row.settings_json)) as AgentSettings : loadSettings();
+}
+
+async function collectRawJobs(settings: AgentSettings): Promise<RawJob[]> {
   const batches = await Promise.all([
     settings.sources.gmailAlerts ? readGmailJobAlerts() : [],
     settings.sources.greenhouse ? fetchGreenhouseJobs() : [],
@@ -48,27 +52,48 @@ async function collectRawJobs(): Promise<RawJob[]> {
     Promise.resolve(settings.sources.trabalhaBrasil ? fetchJobBoardSearches(settings, "trabalhaBrasil") : []),
     Promise.resolve(settings.sources.glassdoorSearch ? fetchJobBoardSearches(settings, "glassdoorSearch") : []),
     Promise.resolve(settings.sources.empregosComBr ? fetchJobBoardSearches(settings, "empregosComBr") : []),
+    Promise.resolve(settings.sources.solidesJobs ? fetchJobBoardSearches(settings, "solidesJobs") : []),
+    Promise.resolve(settings.sources.ablerJobs ? fetchJobBoardSearches(settings, "ablerJobs") : []),
+    Promise.resolve(settings.sources.pandapeJobs ? fetchJobBoardSearches(settings, "pandapeJobs") : []),
     Promise.resolve(settings.sources.rhAgenciesCuritiba ? fetchRhAgencySearches(settings) : []),
     Promise.resolve(settings.sources.companyHunter ? seedTargetCompanyOpportunities() : [])
   ]);
   return batches.flat().slice(0, settings.agent.maxJobsPerRun);
 }
 
-export async function scan(): Promise<void> {
+function runtimeUserId(): number {
+  return Number(process.env.CAREER_HUNTER_USER_ID || 1);
+}
+
+function activeUserIds(db: CareerDatabase): number[] {
+  const rows = db.query<Record<string, unknown>>("SELECT id FROM users WHERE status = 'active' ORDER BY id");
+  if (rows.length === 0) return [runtimeUserId()];
+  return rows.map((row) => Number(row.id)).filter((id) => Number.isFinite(id) && id > 0);
+}
+
+export async function scan(userId = runtimeUserId()): Promise<void> {
   ensureRuntimeFolders();
-  const settings = loadSettings();
+  const db = await CareerDatabase.open();
+  const settings = settingsForUser(db, userId);
   if (!settings.agent.enabled || settings.agent.paused) {
     audit("index", "scan", "Agente desativado ou pausado.");
     return;
   }
-  const db = await CareerDatabase.open();
-  const rawJobs = await collectRawJobs();
+  const rawJobs = await collectRawJobs(settings);
   const jobs = deduplicateJobs(rawJobs.map((raw) => normalizeJob(raw, settings)));
-  for (const job of jobs) db.insertJob(job);
+  for (const job of jobs) db.insertJob(job, userId);
   const rawInformal = await findInformalWork();
-  for (const raw of rawInformal) db.insertInformal(normalizeInformal(raw));
+  for (const raw of rawInformal) db.insertInformal(normalizeInformal(raw), userId);
   audit("index", "scan", `Scan concluído: ${jobs.length} vagas, ${rawInformal.length} informais.`);
   console.log(`Scan concluído: ${jobs.length} vagas e ${rawInformal.length} oportunidades informais.`);
+}
+
+export async function scanAllUsers(): Promise<void> {
+  ensureRuntimeFolders();
+  const db = await CareerDatabase.open();
+  const userIds = activeUserIds(db);
+  for (const userId of userIds) await scan(userId);
+  audit("index", "scan-all", `Scan multiusuário concluído para ${userIds.length} usuário(s).`);
 }
 
 export async function score(): Promise<void> {
@@ -78,13 +103,13 @@ export async function score(): Promise<void> {
   console.log("Score concluído. As notas são calculadas no scan.");
 }
 
-export async function prepare(): Promise<void> {
+export async function prepare(userId = runtimeUserId()): Promise<void> {
   ensureRuntimeFolders();
-  const settings = loadSettings();
   const db = await CareerDatabase.open();
+  const settings = settingsForUser(db, userId);
   const rows = db.query<Record<string, unknown>>(
-    "SELECT * FROM jobs WHERE fit_score >= ? AND risk_score < 60 AND id NOT IN (SELECT COALESCE(job_id, -1) FROM applications) ORDER BY fit_score DESC LIMIT ?",
-    [settings.strategy.onlyPrepareAboveScore, settings.strategy.maxApplicationsPerDay]
+    "SELECT * FROM jobs WHERE user_id = ? AND fit_score >= ? AND risk_score < 60 AND id NOT IN (SELECT COALESCE(job_id, -1) FROM applications WHERE user_id = ?) ORDER BY fit_score DESC LIMIT ?",
+    [userId, settings.strategy.onlyPrepareAboveScore, userId, settings.strategy.maxApplicationsPerDay]
   );
   for (const row of rows) {
     const job = normalizeJob({
@@ -98,19 +123,29 @@ export async function prepare(): Promise<void> {
       salary: String(row.salary ?? "")
     }, settings);
     if (shouldPrepareApplication(job, settings)) {
-      await enqueueApplication(buildApplicationPacket(Number(row.id), job, settings));
+      await enqueueApplication(buildApplicationPacket(Number(row.id), job, settings), userId);
     }
   }
   audit("index", "prepare", `Candidaturas preparadas: ${rows.length}.`);
   console.log(`Candidaturas preparadas e colocadas em aprovação: ${rows.length}.`);
 }
 
+export async function prepareAllUsers(): Promise<void> {
+  ensureRuntimeFolders();
+  const db = await CareerDatabase.open();
+  const userIds = activeUserIds(db);
+  for (const userId of userIds) await prepare(userId);
+  audit("index", "prepare-all", `Preparo multiusuário concluído para ${userIds.length} usuário(s).`);
+}
+
 async function main(): Promise<void> {
   const command = process.argv[2] ?? "scan";
   try {
     if (command === "scan") return scan();
+    if (command === "scan-all") return scanAllUsers();
     if (command === "score") return score();
     if (command === "prepare") return prepare();
+    if (command === "prepare-all") return prepareAllUsers();
     if (command === "daily-summary") {
       console.log(await generateDailySummary());
       return;
@@ -119,7 +154,7 @@ async function main(): Promise<void> {
       console.log(await generateWeeklyMarketRadar());
       return;
     }
-    console.log("Comando disponível: scan, score, prepare, daily-summary, weekly-radar");
+    console.log("Comando disponível: scan, scan-all, score, prepare, prepare-all, daily-summary, weekly-radar");
   } catch (error) {
     logError("index", error, { command });
     throw error;

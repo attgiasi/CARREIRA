@@ -7,7 +7,25 @@ import { scoreHireChance } from "./hireChanceScorer.js";
 import { scoreJobQuality } from "./jobQualityScorer.js";
 import { classifyJob } from "./jobClassifier.js";
 
-const assistedSources = new Set(["google-assisted-search", "sine", "infojobs", "jobs99", "rh-agencies-curitiba"]);
+const assistedSources = new Set([
+  "google-assisted-search",
+  "sine",
+  "infojobs",
+  "jobs99",
+  "rh-agencies-curitiba",
+  "linkedin-search",
+  "indeed-search",
+  "vagascom-search",
+  "catho-search",
+  "netvagas-search",
+  "bne-search",
+  "trabalhabrasil-search",
+  "glassdoor-search",
+  "empregos-search",
+  "solides-search",
+  "abler-search",
+  "pandape-search"
+]);
 
 function detectCareerTrack(text: string): string {
   const lower = text.toLowerCase();

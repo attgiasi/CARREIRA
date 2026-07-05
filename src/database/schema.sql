@@ -1,5 +1,59 @@
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  role TEXT DEFAULT 'user',
+  status TEXT DEFAULT 'active',
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  last_login_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  expires_at TEXT NOT NULL,
+  revoked_at TEXT,
+  user_agent TEXT,
+  ip_address TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_token ON user_sessions(token_hash);
+
+CREATE TABLE IF NOT EXISTS user_settings (
+  user_id INTEGER PRIMARY KEY,
+  settings_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS connected_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  platform TEXT NOT NULL,
+  display_name TEXT,
+  login_url TEXT,
+  username TEXT,
+  encrypted_secret TEXT,
+  secret_label TEXT,
+  status TEXT DEFAULT 'pendente',
+  notes TEXT,
+  last_login_at TEXT,
+  last_sync_at TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_connected_accounts_user ON connected_accounts(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_connected_accounts_user_platform ON connected_accounts(user_id, platform);
+
 CREATE TABLE IF NOT EXISTS jobs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER DEFAULT 1,
   external_id TEXT,
   title TEXT NOT NULL,
   company TEXT,
@@ -37,6 +91,7 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 
 CREATE TABLE IF NOT EXISTS informal_opportunities (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER DEFAULT 1,
   type TEXT,
   title TEXT,
   contractor_name TEXT,
@@ -71,6 +126,7 @@ CREATE TABLE IF NOT EXISTS informal_opportunities (
 
 CREATE TABLE IF NOT EXISTS applications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER DEFAULT 1,
   job_id INTEGER,
   informal_opportunity_id INTEGER,
   user_profile_id INTEGER,
@@ -87,11 +143,16 @@ CREATE TABLE IF NOT EXISTS applications (
   approval_status TEXT,
   sent_by_agent INTEGER DEFAULT 0,
   source_platform TEXT,
+  availability_status TEXT DEFAULT 'nao_verificado',
+  availability_checked_at TEXT,
+  availability_last_ok_at TEXT,
+  availability_closed_at TEXT,
   notes TEXT
 );
 
 CREATE TABLE IF NOT EXISTS candidate_profiles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER DEFAULT 1,
   label TEXT,
   name TEXT NOT NULL,
   email TEXT,
@@ -110,6 +171,7 @@ CREATE TABLE IF NOT EXISTS candidate_profiles (
 
 CREATE TABLE IF NOT EXISTS answer_memory (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER DEFAULT 1,
   user_profile_id INTEGER DEFAULT 1,
   question_key TEXT NOT NULL,
   question_text TEXT,
@@ -126,6 +188,7 @@ CREATE TABLE IF NOT EXISTS answer_memory (
 
 CREATE TABLE IF NOT EXISTS application_attempts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER DEFAULT 1,
   application_id INTEGER,
   user_profile_id INTEGER,
   mode TEXT,

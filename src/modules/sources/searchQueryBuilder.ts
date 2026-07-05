@@ -26,7 +26,3 @@ export function limitedSearchPairs(settings: AgentSettings, maxPairs = 18): Arra
   }
   return pairs;
 }
-
-export function googleSearchUrl(query: string): string {
-  return `https://www.google.com/search?q=${encodeURIComponent(query)}`;
-}

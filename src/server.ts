@@ -12,7 +12,7 @@ const settings = loadSettings();
 const app = express();
 const port = Number(secrets.dashboardPort || settings.agent.dashboardPort || 8788);
 
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "12mb" }));
 app.use(express.static(path.resolve(process.cwd(), "public")));
 app.use("/", dashboardRouter);
 app.use("/api", apiRouter);

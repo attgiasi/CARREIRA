@@ -29,25 +29,67 @@ export class CareerDatabase {
     const db = new SQL.Database(data);
     db.run(fs.readFileSync(schemaPath, "utf8"));
     const instance = new CareerDatabase(db);
-    instance.ensureApplicationColumns();
+    instance.ensureRuntimeColumns();
     instance.save();
     return instance;
   }
 
-  private ensureApplicationColumns(): void {
-    const existing = new Set(this.query<{ name: string }>("PRAGMA table_info(applications)").map((column) => String(column.name)));
-    const columns: Array<[string, string]> = [
+  private ensureColumns(table: string, columns: Array<[string, string]>): void {
+    const existing = new Set(this.query<{ name: string }>(`PRAGMA table_info(${table})`).map((column) => String(column.name)));
+    for (const [name, definition] of columns) {
+      if (!existing.has(name)) this.db.run(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`);
+    }
+  }
+
+  private ensureRuntimeColumns(): void {
+    this.ensureColumns("jobs", [["user_id", "INTEGER DEFAULT 1"]]);
+    this.ensureColumns("informal_opportunities", [["user_id", "INTEGER DEFAULT 1"]]);
+    this.ensureColumns("candidate_profiles", [["user_id", "INTEGER DEFAULT 1"]]);
+    this.ensureColumns("answer_memory", [["user_id", "INTEGER DEFAULT 1"]]);
+    this.ensureColumns("application_attempts", [["user_id", "INTEGER DEFAULT 1"]]);
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS connected_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        platform TEXT NOT NULL,
+        display_name TEXT,
+        login_url TEXT,
+        username TEXT,
+        encrypted_secret TEXT,
+        secret_label TEXT,
+        status TEXT DEFAULT 'pendente',
+        notes TEXT,
+        last_login_at TEXT,
+        last_sync_at TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    this.db.run("CREATE INDEX IF NOT EXISTS idx_connected_accounts_user ON connected_accounts(user_id)");
+    this.db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_connected_accounts_user_platform ON connected_accounts(user_id, platform)");
+    this.ensureColumns("applications", [
+      ["user_id", "INTEGER DEFAULT 1"],
       ["created_at", "TEXT"],
       ["updated_at", "TEXT"],
       ["user_profile_id", "INTEGER"],
       ["last_attempt_at", "TEXT"],
       ["automation_mode", "TEXT"],
-      ["retry_count", "INTEGER DEFAULT 0"]
-    ];
-    for (const [name, definition] of columns) {
-      if (!existing.has(name)) this.db.run(`ALTER TABLE applications ADD COLUMN ${name} ${definition}`);
-    }
+      ["retry_count", "INTEGER DEFAULT 0"],
+      ["availability_status", "TEXT DEFAULT 'nao_verificado'"],
+      ["availability_checked_at", "TEXT"],
+      ["availability_last_ok_at", "TEXT"],
+      ["availability_closed_at", "TEXT"]
+    ]);
     this.db.run("UPDATE applications SET created_at = COALESCE(created_at, CURRENT_TIMESTAMP), updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP)");
+    this.db.run("UPDATE jobs SET user_id = COALESCE(user_id, 1)");
+    this.db.run("UPDATE informal_opportunities SET user_id = COALESCE(user_id, 1)");
+    this.db.run("UPDATE candidate_profiles SET user_id = COALESCE(user_id, 1)");
+    this.db.run("UPDATE answer_memory SET user_id = COALESCE(user_id, 1)");
+    this.db.run("UPDATE application_attempts SET user_id = COALESCE(user_id, 1)");
+    this.db.run("UPDATE applications SET user_id = COALESCE(user_id, 1)");
+    this.db.run("DROP INDEX IF EXISTS idx_jobs_unique_source_external");
+    this.db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_unique_user_source_external ON jobs(user_id, source, external_id)");
+    this.db.run("CREATE INDEX IF NOT EXISTS idx_jobs_user ON jobs(user_id)");
   }
 
   save(): void {
@@ -66,17 +108,17 @@ export class CareerDatabase {
     return result.values.map((row) => Object.fromEntries(result.columns.map((column, index) => [column, row[index]]))) as T[];
   }
 
-  insertJob(job: NormalizedJob): void {
+  insertJob(job: NormalizedJob, userId = 1): void {
     this.run(
       `INSERT OR IGNORE INTO jobs (
-        external_id, title, company, location, source, url, description, salary, work_model,
+        user_id, external_id, title, company, location, source, url, description, salary, work_model,
         travel_required, driver_license_required, driver_license_categories, own_vehicle_required,
         education_required, education_level_detected, seniority_level, career_track, employment_type,
         schedule_type, fit_score, hire_chance_score, job_quality_score, risk_score, fit_reason,
         hire_chance_reason, risk_flags, status, raw_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        job.externalId, job.title, job.company, job.location, job.source, job.url, job.description, job.salary,
+        userId, job.externalId, job.title, job.company, job.location, job.source, job.url, job.description, job.salary,
         job.workModel, Number(job.travelRequired), Number(job.driverLicenseRequired), job.driverLicenseCategories.join(","),
         Number(job.ownVehicleRequired), job.educationRequired, job.educationLevelDetected, job.seniorityLevel,
         job.careerTrack, job.employmentType, job.scheduleType, job.fitScore, job.hireChanceScore,
@@ -86,16 +128,16 @@ export class CareerDatabase {
     );
   }
 
-  insertInformal(opportunity: InformalOpportunity): void {
+  insertInformal(opportunity: InformalOpportunity, userId = 1): void {
     this.run(
       `INSERT INTO informal_opportunities (
-        type, title, contractor_name, company, event_type, location, date, start_time, end_time,
+        user_id, type, title, contractor_name, company, event_type, location, date, start_time, end_time,
         estimated_hours, total_pay, hourly_rate, payment_method, payment_delay_days, food_included,
         transport_included, requires_own_tools, requires_uniform, requires_driver_license, requires_own_vehicle,
         description, source, url, freela_score, risk_score, risk_flags, status, raw_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        opportunity.type, opportunity.title, opportunity.contractorName, opportunity.company, opportunity.eventType,
+        userId, opportunity.type, opportunity.title, opportunity.contractorName, opportunity.company, opportunity.eventType,
         opportunity.location, opportunity.date, opportunity.startTime, opportunity.endTime, opportunity.estimatedHours,
         opportunity.totalPay, opportunity.hourlyRate, opportunity.paymentMethod, opportunity.paymentDelayDays,
         Number(opportunity.foodIncluded), Number(opportunity.transportIncluded), Number(opportunity.requiresOwnTools),

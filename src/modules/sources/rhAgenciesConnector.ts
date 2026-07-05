@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { audit } from "../../safety/auditLogger.js";
 import { AgentSettings, RawJob } from "../../types.js";
-import { configuredRoles, googleSearchUrl } from "./searchQueryBuilder.js";
+import { configuredRoles } from "./searchQueryBuilder.js";
 
 interface Agency {
   name: string;
@@ -27,8 +27,8 @@ export function fetchRhAgencySearches(settings: AgentSettings): RawJob[] {
       company: agency.name,
       location: `${agency.city}/${agency.state}`,
       source: "rh-agencies-curitiba",
-      url: googleSearchUrl(query),
-      description: `${agency.notes} Busca criada para encontrar oportunidades de ${role}. Site direto: ${agency.website}`,
+      url: agency.website,
+      description: `${agency.notes} Fonte direta para encontrar oportunidades de ${role}. Abra o site, escolha a vaga específica e importe o link real quando existir formulário ou página individual.`,
       raw: { agency, role, directUrl: agency.website, query }
     };
   }));

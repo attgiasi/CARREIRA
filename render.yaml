@@ -27,3 +27,5 @@ services:
         sync: false
       - key: GOOGLE_SEARCH_ENGINE_ID
         sync: false
+      - key: ACCOUNT_VAULT_KEY
+        sync: false

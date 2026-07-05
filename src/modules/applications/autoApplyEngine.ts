@@ -50,7 +50,10 @@ const assistedSources = new Set([
   "bne-search",
   "trabalhabrasil-search",
   "glassdoor-search",
-  "empregos-search"
+  "empregos-search",
+  "solides-search",
+  "abler-search",
+  "pandape-search"
 ]);
 
 function memoryValue(memory: MemoryAnswer[], key: string): string {
