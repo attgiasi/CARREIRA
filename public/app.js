@@ -834,12 +834,6 @@ async function dashboard() {
     </div>
     <div class="hero-actions">
       <button id="scanNow" class="primary">Buscar vagas</button>
-      <button data-tab="jobs">Vagas</button>
-      <button data-tab="approved">Aprovadas</button>
-      <button data-tab="applications">Candidaturas</button>
-      <button data-tab="aiApply">IA Candidatura</button>
-      <button data-tab="accounts">Agências</button>
-      <button data-tab="profile">Meu perfil</button>
     </div>
   </div>
 
@@ -882,13 +876,12 @@ async function dashboard() {
         <span class="state-chip ${summary.environment.openaiConfigured ? "success" : "warning"}">OpenAI ${summary.environment.openaiConfigured ? "ativa" : "pendente"}</span>
         <span class="state-chip ${summary.environment.geminiConfigured ? "success" : "info"}">Gemini ${summary.environment.geminiConfigured ? "ativa" : "opcional"}</span>
       </div>
-      <button data-tab="aiApply" class="full">Abrir candidatura por IA</button>
     </section>
   </div>
 
   <div class="three-column">
     <section>
-      <div class="section-head"><div><span class="eyebrow">Melhores vagas</span><h3>Prioridade atual</h3></div><button data-tab="jobs">Abrir</button></div>
+      <div class="section-head"><div><span class="eyebrow">Melhores vagas</span><h3>Prioridade atual</h3></div></div>
       <div class="stack-list">${(summary.topJobs || []).map((row) => `<div class="stack-item">
         <div><strong>${escapeHtml(row.title)}</strong><small>${escapeHtml(row.company || "Empresa a confirmar")} · ${escapeHtml(row.source)}</small></div>
         ${scoreBadge(row)}
@@ -1036,6 +1029,27 @@ function renderAutomationResult(data) {
       <button data-save-memory class="primary">Salvar respostas na memória</button>
     </div>`)
     .join("");
+  const fieldBlocks = actions
+    .filter((action) => action.filledFields && Object.keys(action.filledFields).length)
+    .map((action) => {
+      const fields = Object.entries(action.filledFields || {}).filter(([, value]) => String(value || "").trim());
+      const autofill = buildAutofillBookmarklet(Object.fromEntries(fields));
+      return `<div class="autofill-pack">
+        <div class="section-head">
+          <div><strong>Pacote de preenchimento #${escapeHtml(action.id || "")}</strong><small>Use no formulário oficial da vaga.</small></div>
+          <div class="card-actions">
+            <button data-copy-autofill="${escapeHtml(autofill)}">Copiar autofill</button>
+            <a class="action primary-link" href="${escapeHtml(autofill)}">Preencher esta página</a>
+          </div>
+        </div>
+        <div class="field-copy-grid">${fields.map(([key, value]) => `<div class="field-copy-item">
+          <span>${escapeHtml(key)}</span>
+          <strong>${escapeHtml(value)}</strong>
+          <button data-copy-value="${escapeHtml(value)}">Copiar</button>
+        </div>`).join("")}</div>
+      </div>`;
+    })
+    .join("");
   const lines = actions.map((action) => `<li>
     <strong>#${action.id}</strong>
     <span class="state-chip ${statusTone(action.status)}">${escapeHtml(action.status)}</span>
@@ -1044,7 +1058,7 @@ function renderAutomationResult(data) {
     ${action.url ? `<a href="${escapeHtml(action.url)}" target="_blank" rel="noreferrer">abrir fonte</a> <button data-accelerate-url="${escapeHtml(action.url)}" data-accelerate-title="${escapeHtml(action.title || "")}" data-accelerate-company="${escapeHtml(action.company || "")}" data-accelerate-application-id="${escapeHtml(action.id || "")}">Abrir na IA</button>` : ""}
   </li>`).join("");
   const ids = actions.map((action) => Number(action.id)).filter(Boolean);
-  return `<strong>${escapeHtml(data.modeLabel || "Preparação por IA concluída")} para ${escapeHtml(data.profile?.name || "perfil ativo")}</strong><ul>${lines}</ul>${markSentButton(ids, "Marcar selecionadas como enviadas")}${missingBlocks}`;
+  return `<strong>${escapeHtml(data.modeLabel || "Preparação por IA concluída")} para ${escapeHtml(data.profile?.name || "perfil ativo")}</strong><ul>${lines}</ul>${fieldBlocks}${markSentButton(ids, "Marcar selecionadas como enviadas")}${missingBlocks}`;
 }
 
 function setAiApplyPrefill(data) {
@@ -1061,6 +1075,11 @@ function setAiApplyPrefill(data) {
 function buildAiApplyBookmarklet() {
   const target = `${window.location.origin}/?aiUrl=`;
   return `javascript:(()=>{const u=encodeURIComponent(location.href);const t=encodeURIComponent(document.title||'');window.open('${target}'+u+'&aiTitle='+t+'&aiSource=bookmarklet','_blank','noopener');})()`;
+}
+
+function buildAutofillBookmarklet(fields) {
+  const payload = encodeURIComponent(JSON.stringify(fields));
+  return `javascript:(()=>{const f=JSON.parse(decodeURIComponent('${payload}'));const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'');const aliases={'Nome completo':['nome','name','full name','nome completo'],'E-mail':['email','e-mail','mail'],'Telefone':['telefone','phone','celular','whatsapp','mobile'],'LinkedIn':['linkedin','linked in'],'Cidade':['cidade','city'],'Estado':['estado','uf','state'],'País':['pais','country'],'Resumo profissional':['resumo','summary','sobre','objetivo','cover','apresentacao'],'Pretensão salarial':['salario','salary','pretensao','remuneracao'],'Disponibilidade':['disponibilidade','availability','inicio','start']};const labelFor=e=>{let t=[e.name,e.id,e.placeholder,e.getAttribute('aria-label')].join(' ');const id=e.id;if(id){const l=document.querySelector('label[for=\"'+CSS.escape(id)+'\"]');if(l)t+=' '+l.innerText}const p=e.closest('label');if(p)t+=' '+p.innerText;return norm(t)};let n=0;document.querySelectorAll('input,textarea,select').forEach(e=>{const text=labelFor(e);for(const [k,v] of Object.entries(f)){if(!v)continue;const keys=[k,...(aliases[k]||[])].map(norm);if(keys.some(a=>a&&text.includes(a))){if(e.tagName==='SELECT'){[...e.options].some(o=>{if(norm(o.text).includes(norm(v))||norm(o.value).includes(norm(v))){e.value=o.value;return true}return false})}else if(['checkbox','radio','file','submit','button','hidden'].includes(e.type)){}else{e.value=v}e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));e.style.outline='3px solid #55c29a';n++;break}}});alert('Career Hunter preencheu '+n+' campo(s). Revise antes de enviar.');})()`;
 }
 
 function fileToBase64(file) {
@@ -2138,8 +2157,20 @@ app.addEventListener("click", (event) => {
   const accelerate = event.target.closest("[data-accelerate-url]");
   const markSent = event.target.closest("[data-mark-sent]");
   const saveMemory = event.target.closest("[data-save-memory]");
+  const copyValue = event.target.closest("[data-copy-value]");
+  const copyAutofill = event.target.closest("[data-copy-autofill]");
   if (detail) jobDetail(detail.dataset.detail, currentTab);
   if (tab) load(tab.dataset.tab);
+  if (copyValue) {
+    navigator.clipboard.writeText(copyValue.dataset.copyValue || "")
+      .then(() => toast("Campo copiado.", "success"))
+      .catch(() => toast("Não consegui copiar automaticamente.", "error"));
+  }
+  if (copyAutofill) {
+    navigator.clipboard.writeText(copyAutofill.dataset.copyAutofill || "")
+      .then(() => toast("Autofill copiado. Abra a vaga oficial, cole na barra de endereço e execute.", "success"))
+      .catch(() => toast("Não consegui copiar automaticamente.", "error"));
+  }
   if (accelerate) {
     aiApplyReturnTab = currentTab || "approved";
     setAiApplyPrefill({
