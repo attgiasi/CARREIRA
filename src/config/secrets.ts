@@ -1,6 +1,10 @@
 import dotenv from "dotenv";
+import fs from "node:fs";
+import path from "node:path";
 
 dotenv.config();
+const gmailEnvPath = path.resolve(process.cwd(), ".env.gmail");
+if (fs.existsSync(gmailEnvPath)) dotenv.config({ path: gmailEnvPath, override: true });
 
 function currentSecrets() {
   const dashboardPort = process.env.PORT || process.env.DASHBOARD_PORT || "8788";
@@ -13,6 +17,10 @@ function currentSecrets() {
     googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
     googleRedirectUri: process.env.GOOGLE_REDIRECT_URI ?? "",
     gmailRefreshToken: process.env.GMAIL_REFRESH_TOKEN ?? "",
+    googleCredentialsJson: process.env.GOOGLE_CREDENTIALS_JSON ?? "",
+    googleTokenJson: process.env.GOOGLE_TOKEN_JSON ?? "",
+    googleCredentialsPath: process.env.GOOGLE_CREDENTIALS_PATH ?? "",
+    googleTokenPath: process.env.GOOGLE_TOKEN_PATH ?? "",
     googleCalendarEnabled: process.env.GOOGLE_CALENDAR_ENABLED === "true",
     googleSearchApiKey: process.env.GOOGLE_SEARCH_API_KEY ?? "",
     googleSearchEngineId: process.env.GOOGLE_SEARCH_ENGINE_ID ?? "",
@@ -29,7 +37,15 @@ export function refreshSecrets(): void {
 }
 
 export function hasGmailSecrets(): boolean {
-  return Boolean(secrets.googleClientId && secrets.googleClientSecret && secrets.googleRedirectUri && secrets.gmailRefreshToken);
+  const hasLegacyToken = Boolean(secrets.googleClientId && secrets.googleClientSecret && secrets.gmailRefreshToken);
+  const hasJsonToken = Boolean(secrets.googleCredentialsJson && secrets.googleTokenJson);
+  const hasFileToken = Boolean(
+    secrets.googleCredentialsPath &&
+    secrets.googleTokenPath &&
+    fs.existsSync(path.resolve(secrets.googleCredentialsPath)) &&
+    fs.existsSync(path.resolve(secrets.googleTokenPath))
+  );
+  return hasLegacyToken || hasJsonToken || hasFileToken;
 }
 
 export function hasGoogleSearchSecrets(): boolean {

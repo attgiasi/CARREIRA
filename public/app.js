@@ -11,11 +11,8 @@ const tabs = [
   ["jobs", "Vagas"],
   ["approved", "Aprovadas"],
   ["applications", "Candidaturas"],
-  ["aiApply", "IA Candidatura"],
-  ["informal", "Freelas"],
-  ["accounts", "Agências Conectadas"],
-  ["profile", "Meu Perfil"],
-  ["logs", "Logs"]
+  ["sources", "Fontes"],
+  ["profile", "Meu currículo"]
 ];
 
 const assistedSources = new Set([
@@ -77,14 +74,14 @@ function renderShell() {
   header.innerHTML = `
     <div class="brand-row">
       <button class="brand-lockup" data-tab="dashboard" title="Ir para o painel">
-        <span class="brand-mark">CH</span>
-        <span><strong>Career Hunter</strong><small>Agente de carreira</small></span>
+        <img class="brand-logo" src="/apice-mark.svg" alt="">
+        <span><strong>Ápice</strong><small>Carreira inteligente</small></span>
       </button>
       <nav id="mainNav">${nav}</nav>
       ${currentUser ? `<div class="account-chip"><strong>${escapeHtml(currentUser.name)}</strong><small>${escapeHtml(currentUser.email)}</small><button id="logoutButton">Sair</button></div>` : ""}
       <button id="themeToggle" title="Alternar modo escuro"></button>
     </div>`;
-  document.querySelector("#themeToggle").textContent = document.documentElement.dataset.theme === "dark" ? "Modo claro" : "Modo escuro";
+  document.querySelector("#themeToggle").textContent = document.documentElement.dataset.theme === "dark" ? "Claro" : "Escuro";
 }
 
 async function json(url, options) {
@@ -374,7 +371,19 @@ function scoreBadge(row) {
 }
 
 function applicationState(row) {
-  if (Number(row.sent_by_agent) === 1 || row.application_status === "Candidatura enviada") {
+  if (String(row.pipeline_outcome || "") === "negativa") {
+    return { label: "Não selecionado", tone: "warning", detail: row.last_recruiter_email_at ? `Retorno em ${formatDate(row.last_recruiter_email_at)}` : "Retorno negativo confirmado" };
+  }
+  if (Number(row.pipeline_stage || 1) >= 3) {
+    return { label: "3ª fase", tone: "success", detail: row.next_action || "Etapa avançada do processo" };
+  }
+  if (Number(row.pipeline_stage || 1) >= 2) {
+    return { label: "2ª fase", tone: "success", detail: row.next_action || "Avançou na triagem inicial" };
+  }
+  if (String(row.next_action || "").trim()) {
+    return { label: "Ação necessária", tone: "warning", detail: row.next_action };
+  }
+  if (isSentApplication(row)) {
     return { label: "Candidatado", tone: "success", detail: row.applied_at ? `Enviado em ${formatDate(row.applied_at)}` : "Envio registrado" };
   }
   if (row.application_status === "Pronta para envio assistido") {
@@ -409,12 +418,40 @@ function stateChip(row) {
   return `<span class="state-chip ${state.tone}">${state.label}</span><small>${escapeHtml(state.detail)}</small>`;
 }
 
-function sourceBadge(source) {
-  return `<span class="source-badge">${escapeHtml(sourceName(source) || "Fonte")}</span>`;
+function sourceBadge(sourceOrRow) {
+  return `<span class="source-badge">${escapeHtml(sourceName(sourceOrRow) || "Fonte")}</span>`;
 }
 
 function sourceName(sourceOrRow) {
-  const source = typeof sourceOrRow === "object" && sourceOrRow ? String(sourceOrRow.source || "") : String(sourceOrRow || "");
+  const row = typeof sourceOrRow === "object" && sourceOrRow ? sourceOrRow : null;
+  const source = row ? String(row.source || "") : String(sourceOrRow || "");
+  const host = row ? urlHost(row.url) : "";
+  const hostNames = [
+    ["infojobs", "InfoJobs"],
+    ["linkedin", "LinkedIn"],
+    ["indeed", "Indeed"],
+    ["jobbol", "Jobbol"],
+    ["quickin", "Quickin"],
+    ["gupy", "Gupy"],
+    ["bebee", "BeBee"],
+    ["jobijoba", "Jobijoba"],
+    ["glassdoor", "Glassdoor"],
+    ["99jobs", "99jobs"],
+    ["vagas.com", "Vagas.com"],
+    ["sine", "SINE"],
+    ["catho", "Catho"],
+    ["netvagas", "NetVagas"],
+    ["bne", "BNE"],
+    ["trabalhabrasil", "Trabalha Brasil"],
+    ["empregos.com", "Empregos.com.br"],
+    ["solides", "Sólides"],
+    ["abler", "Abler"],
+    ["pandape", "Pandapé"],
+    ["greenhouse", "Greenhouse"],
+    ["lever", "Lever"]
+  ];
+  const matchedHost = hostNames.find(([needle]) => host.includes(needle));
+  if (matchedHost) return matchedHost[1];
   const names = {
     "google-real-job": "Google",
     "google-assisted-search": "Google",
@@ -449,6 +486,63 @@ function sourceName(sourceOrRow) {
     gmail: "Gmail"
   };
   return names[source] || source.replace(/[-_]/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) || "Fonte";
+}
+
+function urlHost(value) {
+  try {
+    return new URL(String(value || "")).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function sourceRank(name) {
+  const order = ["InfoJobs", "LinkedIn", "Indeed", "Jobbol", "Quickin", "Gupy", "Vagas.com", "Catho", "SINE", "99jobs", "BeBee", "Jobijoba", "Glassdoor", "RH Curitiba", "Google", "Link importado"];
+  const index = order.indexOf(name);
+  return index === -1 ? 999 : index;
+}
+
+function uniqueSources(rows) {
+  return [...new Set(rows.map(sourceName).filter(Boolean))]
+    .sort((a, b) => sourceRank(a) - sourceRank(b) || a.localeCompare(b, "pt-BR"));
+}
+
+function groupRowsBySource(rows) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const name = sourceName(row);
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push(row);
+  });
+  return [...groups.entries()].sort(([a], [b]) => sourceRank(a) - sourceRank(b) || a.localeCompare(b, "pt-BR"));
+}
+
+function sourceGroupStats(rows) {
+  const direct = rows.filter(hasDirectJobUrl).length;
+  const ia = rows.filter((row) => applicationChannel(row).id === "ia").length;
+  const sent = rows.filter(isSentApplication).length;
+  const pending = rows.length - sent;
+  return [
+    `<span>${direct} link(s) direto(s)</span>`,
+    ia ? `<span>${ia} por IA</span>` : "",
+    sent ? `<span>${sent} enviada(s)</span>` : "",
+    pending ? `<span>${pending} pendente(s)</span>` : ""
+  ].filter(Boolean).join("");
+}
+
+function renderGroupedCards(rows, cardRenderer, itemLabel) {
+  return `<div class="source-groups">${groupRowsBySource(rows).map(([name, sourceRows]) => `
+    <section class="source-group">
+      <div class="source-group-head">
+        <div>
+          <span class="eyebrow">Fonte</span>
+          <h3>${escapeHtml(name)}</h3>
+          <p>${sourceRows.length} ${escapeHtml(itemLabel)}${sourceRows.length === 1 ? "" : "s"} nesta fonte.</p>
+        </div>
+        <div class="source-group-stats">${sourceGroupStats(sourceRows)}</div>
+      </div>
+      <div class="opportunity-grid">${sourceRows.map(cardRenderer).join("")}</div>
+    </section>`).join("")}</div>`;
 }
 
 function sourceLink(row, label = sourceName(row)) {
@@ -508,7 +602,7 @@ function fileName(value) {
 }
 
 function isSentApplication(row) {
-  return Number(row.sent_by_agent) === 1 || row.application_status === "Candidatura enviada";
+  return Number(row.sent_by_agent) === 1 || Boolean(row.applied_at) || /candidatura enviada|enviada pelo|enviada por e-mail/i.test(String(row.application_status || ""));
 }
 
 function isApprovedApplication(row) {
@@ -563,9 +657,11 @@ function cardCheckbox(className, id) {
 
 function formatDate(value) {
   if (!value) return "Ainda não registrado";
-  const date = new Date(String(value).replace(" ", "T"));
+  const raw = String(value).trim();
+  const iso = raw.replace(" ", "T");
+  const date = new Date(/[zZ]$|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  return date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
 }
 
 function moneyAwareSalary(row) {
@@ -724,7 +820,9 @@ function applicationCard(row, context = "approved") {
       ["Local", escapeHtml(row.location || "A confirmar")],
       ["Modelo", escapeHtml(row.work_model || "A confirmar")],
       ["Chance", `${escapeHtml(row.hire_chance_score ?? "-")}/100`],
-      [context === "sent" ? "Candidatado" : "Aprovado", escapeHtml(formatDate(context === "sent" ? row.applied_at : row.updated_at))]
+      [context === "sent" ? (row.approval_status === "confirmada_por_email" ? "Confirmado no Gmail" : "Candidatado") : "Aprovado", escapeHtml(formatDate(context === "sent" ? row.applied_at : row.updated_at))],
+      ["Etapa", escapeHtml(state.label)],
+      ["Último retorno", row.last_recruiter_email_at ? escapeHtml(formatDate(row.last_recruiter_email_at)) : "Sem retorno"]
     ])}
     <p class="card-description">${escapeHtml(shortDescription(row.description, 280))}</p>
     <div class="application-assets">
@@ -733,12 +831,13 @@ function applicationCard(row, context = "approved") {
       <span><strong>Chance</strong> ${escapeHtml(row.hire_chance_reason || "Calculada pela aderência, qualidade da vaga e risco.")}</span>
     </div>
     <div class="card-footer">
-      <span class="state-chip ${channel.tone}">${escapeHtml(channel.label)}</span>
+      ${context !== "sent" ? `<span class="state-chip ${channel.tone}">${escapeHtml(channel.label)}</span>` : ""}
       <span class="state-chip ${state.tone}">${escapeHtml(state.label)}</span>
-      ${context === "sent" ? availabilityChip(row) : `<small>${escapeHtml(applicationNextAction(row))}</small>`}
+      ${context === "sent" && row.next_action ? `<small>${escapeHtml(row.next_action)}</small>` : context === "sent" ? availabilityChip(row) : `<small>${escapeHtml(applicationNextAction(row))}</small>`}
     </div>
     <div class="card-actions">
       ${sourceActionLink(row)}
+      ${row.latest_email_url ? `<a class="action" href="${escapeHtml(row.latest_email_url)}" target="_blank" rel="noreferrer">Abrir e-mail</a>` : ""}
       ${canApplyWithAi && context !== "sent" ? `<button class="primary" data-ai-apply="${row.id}" data-application-url="${escapeHtml(row.url || "")}" data-application-title="${escapeHtml(row.title || "")}" data-application-company="${escapeHtml(row.company || "")}">Candidatar com IA</button>` : ""}
       ${context !== "sent" ? aiAccelerateButton(row, "Acelerar no navegador", row.id) : ""}
       ${context !== "sent" ? `<button data-mark-sent="${row.id}">Marcar enviada</button>` : `<button data-retry="${row.id}">Candidatar novamente</button>`}
@@ -817,86 +916,171 @@ function bindRealLinkImporter(idPrefix, onImported = () => load("jobs")) {
 }
 
 async function dashboard() {
-  const [summary, profile] = await Promise.all([json("/api/summary"), json("/api/career-profile")]);
-  const actions = [
-    !summary.environment.openaiConfigured ? ["Configurar IA", "Adicione sua OPENAI_API_KEY para cartas e respostas mais fortes.", "profile"] : null,
-    Number(summary.availableJobs) > 0 ? ["Revisar vagas", `${summary.availableJobs} vaga(s) novas fora da fila de candidatura.`, "jobs"] : null,
-    Number(summary.approved) > 0 ? ["Candidatar aprovadas", `${summary.approved} vaga(s) aprovadas aguardando ação.`, "approved"] : null,
-    Number(summary.pendingInformation) > 0 ? ["Responder memória", `${summary.pendingInformation} candidatura(s) precisam de dados seus.`, "applications"] : null,
-    Number(summary.waitingRealJob) > 0 ? ["Validar fonte", `${summary.waitingRealJob} entrada(s) precisam de link real da vaga.`, "applications"] : null
-  ].filter(Boolean);
+  const [summary, gmail, sourceData] = await Promise.all([
+    json("/api/summary"),
+    json("/api/gmail/status"),
+    json("/api/sources")
+  ]);
+  const pipeline = summary.pipeline || {};
+  const salary = summary.salary || {};
+  const phase1 = pipeline.phase1 || {};
+  const phase2 = pipeline.phase2 || {};
+  const phase3 = pipeline.phase3 || {};
+  const sourceRows = (sourceData.sources || []).slice(0, 6);
 
-  app.innerHTML = `<div class="command-hero">
-    <div class="hero-copy">
-      <span class="eyebrow">Centro de comando</span>
-      <h2>Pipeline de carreira premium</h2>
-      <p>Busca vagas, aprova oportunidades, prepara candidatura por IA e acompanha respostas em um fluxo direto.</p>
+  app.innerHTML = `<div class="executive-head">
+    <div>
+      <span class="eyebrow">Visão executiva</span>
+      <h2>Seu funil de contratação, sem números inflados</h2>
+      <p>${pipeline.actual || 0} candidaturas realmente enviadas. Filas, pesquisas e links pendentes ficam fora deste total.</p>
     </div>
-    <div class="hero-actions">
+    <div class="executive-actions">
+      <span class="connection-pill ${gmail.connected ? "online" : "offline"}"><i></i> Gmail ${gmail.connected ? "conectado" : "desconectado"}</span>
+      <button id="syncGmail">Atualizar retornos</button>
       <button id="scanNow" class="primary">Buscar vagas</button>
     </div>
   </div>
 
-  <div class="kpi-grid">
-    ${metricCard("Vagas novas", summary.availableJobs, "Fora da fila de candidatura", "accent")}
-    ${metricCard("Radar total", summary.jobs, "Histórico encontrado", "blue")}
-    ${metricCard("Aprovadas", summary.approved, "Prontas para candidatar", "gold")}
-    ${metricCard("Pendências", summary.actionItems, "Ver em Candidaturas", "warning")}
-    ${metricCard("Duplicadas", summary.duplicateGroups || 0, "Entre fontes diferentes", "warning")}
-    ${metricCard("Faltam dados", summary.pendingInformation, "Perguntas para salvar na memória", "warning")}
-    ${metricCard("Prontas", summary.ready, "Fonte oficial aberta", "accent")}
-    ${metricCard("Candidatadas", summary.sent, `Última: ${formatDate(summary.lastAppliedAt)}`, "success")}
-    ${metricCard("Meu Perfil", summary.profiles, `${summary.memoryAnswers} resposta(s) memorizada(s)`, "blue")}
+  <div class="kpi-grid executive-kpis">
+    ${metricCard("Candidaturas reais", pipeline.actual, `Último registro: ${formatDate(summary.lastAppliedAt)}`, "blue")}
+    ${metricCard("Selecionado", pipeline.selected, "Avançaram para outra fase", "success")}
+    ${metricCard("Não selecionado", pipeline.rejected, "Retornos negativos confirmados", "danger")}
+    ${metricCard("Sem retorno", pipeline.pending, "Aguardando resposta", "neutral")}
+    ${metricCard("Na 2ª fase", pipeline.stage2, `${phase2.waiting || 0} aguardando novo retorno`, "gold")}
+    ${metricCard("Na 3ª fase", pipeline.stage3, `${phase3.waiting || 0} em andamento`, "violet")}
+    ${metricCard("Ações suas", pipeline.actions, "E-mails ou etapas para concluir", "warning")}
   </div>
 
-  <div class="command-grid">
-    <section class="pipeline-panel">
-      <div class="section-head"><div><span class="eyebrow">Pipeline</span><h3>Status operacional</h3></div></div>
-      <div class="pipeline-track">
-        ${pipelineStage("Busca", summary.jobs, "captadas")}
-        ${pipelineStage("Novas", summary.availableJobs, "para revisar")}
-        ${pipelineStage("Vagas", summary.availableJobs, "para aprovar")}
-        ${pipelineStage("Aprovadas", summary.approved, "para candidatar")}
-        ${pipelineStage("Candidaturas", summary.sent, "enviadas")}
-      </div>
-      <div class="status-board">
-        ${(summary.byApplicationStatus || []).map((row) => `<div><span>${escapeHtml(row.status)}</span><strong>${row.total}</strong></div>`).join("") || "<p>Nenhum status registrado ainda.</p>"}
+  <div class="dashboard-grid dashboard-grid-main">
+    <section class="funnel-section">
+      <div class="section-head"><div><span class="eyebrow">Etapas</span><h3>Funil por fase</h3></div><span class="data-caption">Taxa de retorno ${pipeline.responseRate || 0}%</span></div>
+      <div class="phase-grid">
+        ${phaseCard("1ª fase", phase1, "Todas as candidaturas enviadas")}
+        ${phaseCard("2ª fase", phase2, "Quem avançou na triagem inicial")}
+        ${phaseCard("3ª fase", phase3, "Etapa avançada ou proposta")}
       </div>
     </section>
-
-    <section class="ai-panel">
-      <div class="section-head"><div><span class="eyebrow">IA e currículo</span><h3>${profile.ai.openaiConfigured ? "IA ativa" : "IA aguardando chave"}</h3></div><span class="state-chip ${profile.ai.openaiConfigured ? "success" : "warning"}">${escapeHtml(profile.ai.model)}</span></div>
-      <p class="tight">${escapeHtml(profile.applicationPositioning.headline)}</p>
-      <div class="resume-snapshot">
-        <div><strong>${profile.resumes.length}</strong><span>currículo(s) base</span></div>
-        <div><strong>${profile.generatedResumes.length}</strong><span>CVs gerados</span></div>
-        <div><strong>${profile.generatedCoverLetters.length}</strong><span>cartas geradas</span></div>
+    <section class="gmail-section">
+      <div class="section-head"><div><span class="eyebrow">Gmail</span><h3>Leitura de recrutadores</h3></div><span class="state-chip ${gmail.connected ? "success" : "warning"}">${gmail.connected ? "Ativo" : "Atenção"}</span></div>
+      <div class="connection-detail">
+        <strong>${escapeHtml(gmail.email || "Conta não conectada")}</strong>
+        <small>${gmail.lastSync?.completed_at ? `Última leitura: ${formatDate(gmail.lastSync.completed_at)}` : "Nenhuma leitura registrada"}</small>
       </div>
-      <div class="env-status">
-        <span class="state-chip ${summary.environment.openaiConfigured ? "success" : "warning"}">OpenAI ${summary.environment.openaiConfigured ? "ativa" : "pendente"}</span>
-        <span class="state-chip ${summary.environment.geminiConfigured ? "success" : "info"}">Gemini ${summary.environment.geminiConfigured ? "ativa" : "opcional"}</span>
+      <div class="mini-stats">
+        <div><span>Mensagens verificadas</span><strong>${gmail.lastSync?.scanned_messages || 0}</strong></div>
+        <div><span>Retornos vinculados</span><strong>${gmail.lastSync?.matched_messages || 0}</strong></div>
+        <div><span>Novos eventos</span><strong>${gmail.lastSync?.inserted_events || 0}</strong></div>
       </div>
+      ${gmail.connected ? "" : `<p class="inline-alert">${escapeHtml(gmail.error || "Renove a autorização do Gmail.")}</p>`}
     </section>
   </div>
 
-  <div class="three-column">
+  <div class="dashboard-grid dashboard-grid-data">
     <section>
-      <div class="section-head"><div><span class="eyebrow">Melhores vagas</span><h3>Prioridade atual</h3></div></div>
-      <div class="stack-list">${(summary.topJobs || []).map((row) => `<div class="stack-item">
-        <div><strong>${escapeHtml(row.title)}</strong><small>${escapeHtml(row.company || "Empresa a confirmar")} · ${escapeHtml(row.source)}</small></div>
-        ${scoreBadge(row)}
-      </div>`).join("") || `<div class="empty-mini">Sem vaga ranqueada com link direto ainda.</div>`}</div>
+      <div class="section-head"><div><span class="eyebrow">Salário-base</span><h3>Distribuição dos anúncios</h3></div><span class="data-caption">Meta mínima: ${formatMoney(salary.target || 3000)}</span></div>
+      <div class="salary-summary">
+        <div><strong>${salary.atOrAboveTarget || 0}</strong><span>R$ 3 mil ou mais</span></div>
+        <div><strong>${salary.notInformed || 0}</strong><span>não informados</span></div>
+        <div><strong>${formatMoney(salary.medianMinimum || 0)}</strong><span>mediana da base</span></div>
+      </div>
+      ${salaryChart(salary.distribution || [])}
+      <small>Bonificações, benefícios, comissões e gratificações não entram no valor do salário-base.</small>
     </section>
     <section>
-      <div class="section-head"><div><span class="eyebrow">Fontes</span><h3>Onde estão aparecendo</h3></div></div>
-      <div class="bar-list">${(summary.bySource || []).map((row) => sourceBar(row, summary.jobs)).join("") || `<div class="empty-mini">Nenhuma fonte registrada.</div>`}</div>
+      <div class="section-head"><div><span class="eyebrow">Fontes</span><h3>Qualidade por canal</h3></div><button data-tab="sources">Ver todas</button></div>
+      <div class="source-performance">
+        ${sourceRows.map(sourcePerformanceRow).join("") || `<div class="empty-mini">Sem fontes analisadas.</div>`}
+      </div>
+    </section>
+  </div>
+
+  <div class="dashboard-grid dashboard-grid-data">
+    <section>
+      <div class="section-head"><div><span class="eyebrow">Retornos recentes</span><h3>O que os recrutadores responderam</h3></div></div>
+      <div class="event-feed">
+        ${(summary.recentRecruiterEvents || []).map(recruiterEventRow).join("") || `<div class="empty-mini">Atualize o Gmail para classificar os retornos.</div>`}
+      </div>
     </section>
     <section>
-      <div class="section-head"><div><span class="eyebrow">Próximas ações</span><h3>Fila inteligente</h3></div></div>
-      <div class="stack-list">${actions.length ? actions.map(([title, text, tab]) => `<button class="action-row" data-tab="${tab}"><strong>${escapeHtml(title)}</strong><small>${escapeHtml(text)}</small></button>`).join("") : `<div class="empty-mini">Nenhuma ação crítica agora.</div>`}</div>
+      <div class="section-head"><div><span class="eyebrow">Prioridade</span><h3>Próximas ações</h3></div></div>
+      <div class="action-feed">
+        ${(summary.recruiterActions || []).map((row) => `<div class="decision-row">
+          <span class="decision-mark needs-action"></span>
+          <div><strong>${escapeHtml(row.title || "Vaga")}</strong><small>${escapeHtml(row.company || "Empresa")} · ${escapeHtml(row.next_action || "Revisar retorno")}</small></div>
+          ${row.url ? `<a class="action" href="${escapeHtml(row.url)}" target="_blank" rel="noreferrer">Abrir</a>` : `<button data-tab="applications">Ver</button>`}
+        </div>`).join("") || `<div class="empty-mini">Nenhuma ação urgente identificada.</div>`}
+      </div>
     </section>
   </div>`;
+
   document.querySelector("#scanNow").onclick = () => runScanAndRefresh("dashboard");
+  document.querySelector("#syncGmail").onclick = async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = "Lendo Gmail...";
+    try {
+      const result = await json("/api/gmail/sync", { method: "POST" });
+      toast(`${result.matched} retorno(s) vinculados às candidaturas.`, "success");
+      await dashboard();
+    } catch (error) {
+      toast(error.message, "error");
+      button.disabled = false;
+      button.textContent = "Atualizar retornos";
+    }
+  };
+}
+
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+}
+
+function phaseCard(label, data, detail) {
+  const total = Number(data?.total || 0);
+  const positive = Number(data?.positive || 0);
+  const negative = Number(data?.negative || 0);
+  const waiting = Number(data?.waiting || 0);
+  return `<article class="phase-card">
+    <div><span>${label}</span><strong>${total}</strong><small>${escapeHtml(detail)}</small></div>
+    <div class="phase-outcomes">
+      <span class="positive">${positive} positivas</span>
+      <span class="negative">${negative} negativas</span>
+      <span class="waiting">${waiting} sem retorno</span>
+    </div>
+  </article>`;
+}
+
+function salaryChart(rows) {
+  const max = Math.max(1, ...rows.map((row) => Number(row.total || 0)));
+  return `<div class="salary-chart">${rows.map((row) => `<div class="salary-row">
+    <span>${escapeHtml(row.label)}</span>
+    <div><i style="width:${Math.max(row.total ? 4 : 0, Math.round((Number(row.total || 0) / max) * 100))}%;background:${escapeHtml(row.color)}"></i></div>
+    <strong>${row.total || 0}</strong>
+  </div>`).join("")}</div>`;
+}
+
+function sourcePerformanceRow(row) {
+  return `<div class="source-performance-row">
+    <div><strong>${escapeHtml(row.source)}</strong><small>${row.applications || 0} candidaturas · ${row.jobs || 0} vagas</small></div>
+    <div><span>${row.selected || 0} avanços</span><strong>${row.responseRate || 0}%</strong></div>
+  </div>`;
+}
+
+function recruiterEventRow(row) {
+  const labels = {
+    rejection: ["Não selecionado", "negative"],
+    advanced: ["Avançou de fase", "positive"],
+    interview: ["Entrevista", "positive"],
+    offer: ["Proposta", "positive"],
+    action_required: ["Ação necessária", "needs-action"],
+    reviewing: ["Em análise", "waiting"]
+  };
+  const [label, tone] = labels[row.event_type] || ["Atualização", "waiting"];
+  return `<div class="decision-row">
+    <span class="decision-mark ${tone}"></span>
+    <div><strong>${escapeHtml(row.title || row.job_title || "Vaga")}</strong><small>${escapeHtml(row.company || "Empresa")} · ${formatDate(row.received_at)}</small></div>
+    <span class="outcome-label ${tone}">${label}</span>
+    ${row.action_url ? `<a class="action" href="${escapeHtml(row.action_url)}" target="_blank" rel="noreferrer">E-mail</a>` : ""}
+  </div>`;
 }
 
 function metricCard(label, value, detail, tone) {
@@ -915,7 +1099,7 @@ function sourceBar(row, total) {
 async function jobs(initialMessage = "") {
   const rows = await json("/api/jobs");
   const filters = getSavedFilters("jobs", { q: "", source: "all", work: "all", status: "all", minScore: 0, salary: false, assisted: "all", hideDuplicates: false });
-  const sources = uniqueValues(rows, "source");
+  const sources = uniqueSources(rows);
   const workModels = uniqueValues(rows, "work_model");
   const statuses = uniqueValues(rows, "status");
 
@@ -965,7 +1149,7 @@ async function jobs(initialMessage = "") {
     saveFilters("jobs", active);
     const visibleRows = rows.filter((row) => {
       if (!includesSearch(row, active.q)) return false;
-      if (active.source !== "all" && String(row.source) !== active.source) return false;
+      if (active.source !== "all" && sourceName(row) !== active.source) return false;
       if (active.work !== "all" && String(row.work_model) !== active.work) return false;
       if (active.status !== "all" && String(row.status) !== active.status) return false;
       if (Number(row.fit_score || 0) < active.minScore) return false;
@@ -978,7 +1162,7 @@ async function jobs(initialMessage = "") {
     const empty = rows.length
       ? `<div class="empty-state"><h3>Nenhuma vaga bate com os filtros</h3><p>Ajuste filtros ou rode uma nova busca.</p><button id="scanJobsEmpty" class="primary">Buscar vagas</button></div>`
       : `<div class="empty-state"><h3>Nenhuma vaga nova na fila</h3><p>Clique em Buscar vagas para renovar o radar. Depois, use o filtro Tipo de fonte para ver apenas vagas com fonte direta; se aparecer uma página de busca, abra a fonte e importe o link real da vaga individual.</p><button id="scanJobsEmpty" class="primary">Buscar vagas</button></div>`;
-    mount.innerHTML = `<div class="table-meta"><strong>${visibleRows.length}</strong><span>vaga(s) exibida(s)</span></div>${visibleRows.length ? `<div class="opportunity-grid">${visibleRows.map(jobCard).join("")}</div>` : empty}`;
+    mount.innerHTML = `<div class="table-meta"><strong>${visibleRows.length}</strong><span>vaga(s) exibida(s)</span><span>${groupRowsBySource(visibleRows).length} fonte(s)</span></div>${visibleRows.length ? renderGroupedCards(visibleRows, jobCard, "vaga") : empty}`;
     const emptyScan = document.querySelector("#scanJobsEmpty");
     if (emptyScan) emptyScan.onclick = () => runScanAndRefresh("jobs");
   };
@@ -1147,7 +1331,7 @@ async function approved(initialMessage = "") {
   const allRows = await json("/api/applications");
   const rows = allRows.filter(isApprovedApplication);
   const filters = getSavedFilters("approved", { q: "", source: "all", work: "all", minScore: 0, channel: "all" });
-  const sources = uniqueValues(rows, "source");
+  const sources = uniqueSources(rows);
   const workModels = uniqueValues(rows, "work_model");
   const labels = {
     all: "Todas",
@@ -1201,7 +1385,7 @@ async function approved(initialMessage = "") {
     const visibleRows = rows.filter((row) => {
       const channel = applicationChannel(row).id;
       if (!includesSearch(row, active.q)) return false;
-      if (active.source !== "all" && String(row.source) !== active.source) return false;
+      if (active.source !== "all" && sourceName(row) !== active.source) return false;
       if (active.work !== "all" && String(row.work_model) !== active.work) return false;
       if (Number(row.fit_score || 0) < active.minScore) return false;
       if (active.channel !== "all" && channel !== active.channel) return false;
@@ -1213,7 +1397,7 @@ async function approved(initialMessage = "") {
       return acc;
     }, {});
     const empty = `<div class="empty-state"><h3>Nenhuma vaga aprovada nesta etapa</h3><p>Volte em Vagas, selecione as oportunidades que fazem sentido e clique em Aprovar selecionadas.</p><button data-tab="jobs" class="primary">Ver vagas</button></div>`;
-    mount.innerHTML = `<div class="table-meta"><strong>${visibleRows.length}</strong><span>aprovada(s) exibida(s)</span><span>IA: ${counters.ia || 0}</span><span>Você faz: ${counters.manual || 0}</span><span>E-mail/WhatsApp/Telefone: ${(counters.email || 0) + (counters.whatsapp || 0) + (counters.telefone || 0)}</span></div>${visibleRows.length ? `<div class="opportunity-grid">${visibleRows.map((row) => applicationCard(row, "approved")).join("")}</div>` : empty}`;
+    mount.innerHTML = `<div class="table-meta"><strong>${visibleRows.length}</strong><span>aprovada(s) exibida(s)</span><span>${groupRowsBySource(visibleRows).length} fonte(s)</span><span>IA: ${counters.ia || 0}</span><span>Você faz: ${counters.manual || 0}</span><span>E-mail/WhatsApp/Telefone: ${(counters.email || 0) + (counters.whatsapp || 0) + (counters.telefone || 0)}</span></div>${visibleRows.length ? renderGroupedCards(visibleRows, (row) => applicationCard(row, "approved"), "vaga aprovada") : empty}`;
   };
 
   const selectedIds = () => [...document.querySelectorAll(".application-check:checked")].map((input) => Number(input.value));
@@ -1249,20 +1433,19 @@ async function applications(initialMessage = "") {
   const allRows = await json("/api/applications");
   const rows = allRows;
   const filters = getSavedFilters("applications", { q: "", source: "all", work: "all", availability: "all", minScore: 0, stage: "all" });
-  const sources = uniqueValues(rows, "source");
+  const sources = uniqueSources(rows);
   const workModels = uniqueValues(rows, "work_model");
   const stages = {
     all: "Todas",
-    todo: "Precisa ação",
-    ia: "IA pode fazer",
-    manual: "Eu faço",
-    precisa_link: "Precisa link",
-    sent: "Já candidatadas"
+    selected: "Selecionado",
+    rejected: "Não selecionado",
+    waiting: "Sem retorno",
+    action: "Ação necessária"
   };
 
   app.innerHTML = `<section class="page-panel">
     <div class="page-title-row">
-      <div><span class="eyebrow">Candidaturas</span><h2>Próximo passo de cada vaga</h2><p>Veja o que cada vaga precisa agora: IA preencher, você concluir, importar link real, responder dados ou acompanhar retorno.</p></div>
+      <div><span class="eyebrow">Candidaturas</span><h2>Acompanhamento de processos</h2><p>Veja apenas candidaturas realmente enviadas, os retornos do Gmail, a fase atual e a próxima ação de cada vaga.</p></div>
       <div class="toolbar-actions">
         <button id="toggleApplicationFilters">Filtros</button>
         <button id="selectAllApplications">Selecionar todas</button>
@@ -1301,27 +1484,31 @@ async function applications(initialMessage = "") {
     saveFilters("applications", active);
     const visibleRows = rows.filter((row) => {
       const availability = String(row.availability_status || "nao_verificado");
-      const channel = applicationChannel(row).id;
       const sent = isSentApplication(row);
       if (!includesSearch(row, active.q)) return false;
-      if (active.source !== "all" && String(row.source) !== active.source) return false;
+      if (active.source !== "all" && sourceName(row) !== active.source) return false;
       if (active.work !== "all" && String(row.work_model) !== active.work) return false;
       if (active.availability !== "all" && availability !== active.availability) return false;
       if (Number(row.fit_score || 0) < active.minScore) return false;
-      if (active.stage === "sent" && !sent) return false;
-      if (active.stage === "todo" && sent) return false;
-      if (active.stage === "ia" && (sent || !["ia", "dados"].includes(channel))) return false;
-      if (active.stage === "manual" && (sent || !["manual", "email", "whatsapp", "telefone"].includes(channel))) return false;
-      if (active.stage === "precisa_link" && (sent || channel !== "precisa_link")) return false;
+      const outcome = String(row.pipeline_outcome || "sem_retorno");
+      const pipelineStage = Number(row.pipeline_stage || 1);
+      if (!sent) return false;
+      if (active.stage === "selected" && !(pipelineStage >= 2 && outcome !== "negativa")) return false;
+      if (active.stage === "rejected" && outcome !== "negativa") return false;
+      if (active.stage === "waiting" && !(pipelineStage < 2 && outcome !== "negativa")) return false;
+      if (active.stage === "action" && !String(row.next_action || "").trim()) return false;
       return true;
     });
     const counters = rows.reduce((acc, row) => {
-      const key = isSentApplication(row) ? "sent" : applicationChannel(row).id;
+      const outcome = String(row.pipeline_outcome || "sem_retorno");
+      const pipelineStage = Number(row.pipeline_stage || 1);
+      const key = outcome === "negativa" ? "rejected" : pipelineStage >= 2 ? "selected" : "waiting";
       acc[key] = (acc[key] || 0) + 1;
+      if (String(row.next_action || "").trim()) acc.action = (acc.action || 0) + 1;
       return acc;
     }, {});
     const empty = `<div class="empty-state"><h3>Nenhuma candidatura nesta etapa</h3><p>Aprove vagas ou registre candidaturas enviadas para acompanhar aqui.</p><button data-tab="approved" class="primary">Ver aprovadas</button></div>`;
-    mount.innerHTML = `<div class="table-meta"><strong>${visibleRows.length}</strong><span>candidatura(s) exibida(s)</span><span>IA: ${counters.ia || 0}</span><span>Precisa link: ${counters.precisa_link || 0}</span><span>Enviadas: ${counters.sent || 0}</span></div>${visibleRows.length ? `<div class="opportunity-grid">${visibleRows.map((row) => applicationCard(row, isSentApplication(row) ? "sent" : "approved")).join("")}</div>` : empty}`;
+    mount.innerHTML = `<div class="table-meta"><strong>${visibleRows.length}</strong><span>candidatura(s) exibida(s)</span><span>${groupRowsBySource(visibleRows).length} fonte(s)</span><span>Selecionadas: ${counters.selected || 0}</span><span>Não selecionadas: ${counters.rejected || 0}</span><span>Sem retorno: ${counters.waiting || 0}</span><span>Ações: ${counters.action || 0}</span></div>${visibleRows.length ? renderGroupedCards(visibleRows, (row) => applicationCard(row, "sent"), "candidatura") : empty}`;
   };
 
   const selectedIds = () => [...document.querySelectorAll(".application-check:checked")].map((input) => Number(input.value));
@@ -2097,6 +2284,60 @@ async function settings() {
   syncCode();
 }
 
+async function sourcesPage() {
+  const data = await json("/api/sources");
+  const rows = data.sources || [];
+  const totalApplications = rows.reduce((sum, row) => sum + Number(row.applications || 0), 0);
+  const totalSelected = rows.reduce((sum, row) => sum + Number(row.selected || 0), 0);
+  const totalHighSalary = rows.reduce((sum, row) => sum + Number(row.salaryAtOrAboveTarget || 0), 0);
+  app.innerHTML = `<section class="page-panel source-page">
+    <div class="page-title-row">
+      <div><span class="eyebrow">Fontes</span><h2>Onde as oportunidades e os retornos acontecem</h2><p>Compare volume, qualidade salarial e resposta dos canais antes de concentrar suas candidaturas.</p></div>
+      <div class="toolbar-actions"><button data-tab="profile">Ajustar currículo</button><button id="sourceScan" class="primary">Buscar novas vagas</button></div>
+    </div>
+    <div class="kpi-grid compact source-kpis">
+      ${metricCard("Sites monitorados", rows.length, "Fontes com dados no radar", "blue")}
+      ${metricCard("Candidaturas reais", totalApplications, "Enviadas por todas as fontes", "success")}
+      ${metricCard("Avanços", totalSelected, "Selecionadas para nova fase", "gold")}
+      ${metricCard("Salário-base ≥ R$ 3 mil", totalHighSalary, "Anúncios com base mínima confirmada", "violet")}
+    </div>
+    <div class="focus-band">
+      <div><span class="eyebrow">Foco do perfil</span><h3>Vagas priorizadas</h3></div>
+      <div class="focus-list">${(data.focus || []).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}</div>
+    </div>
+    <div class="filter-line"><label>Filtrar fonte<input id="sourceFilter" placeholder="InfoJobs, LinkedIn, Gupy..."></label></div>
+    <div id="sourceGrid" class="source-grid"></div>
+  </section>
+  <section class="page-panel agency-directory">
+    <div class="section-head"><div><span class="eyebrow">Recrutamento</span><h3>Agências e portais confiáveis</h3></div><span class="data-caption">Curitiba e região</span></div>
+    <div class="agency-grid">${(data.agencies || []).map((agency) => `<article class="agency-row">
+      <div><strong>${escapeHtml(agency.name)}</strong><small>${escapeHtml(agency.sector)} · ${escapeHtml(agency.city)}/${escapeHtml(agency.state)}</small><p>${escapeHtml(agency.notes)}</p></div>
+      <a class="action" href="${escapeHtml(agency.website)}" target="_blank" rel="noreferrer">Abrir site</a>
+    </article>`).join("")}</div>
+  </section>`;
+
+  const renderSources = () => {
+    const query = document.querySelector("#sourceFilter").value.trim().toLowerCase();
+    const visible = rows.filter((row) => String(row.source || "").toLowerCase().includes(query));
+    document.querySelector("#sourceGrid").innerHTML = visible.map((row) => `<article class="source-card">
+      <div class="source-card-head"><div><span class="source-initial">${escapeHtml(String(row.source || "?").slice(0, 2).toUpperCase())}</span><strong>${escapeHtml(row.source)}</strong></div><span class="quality-score">Nota ${row.averageFit || 0}</span></div>
+      <div class="source-card-metrics">
+        <div><span>Vagas</span><strong>${row.jobs || 0}</strong></div>
+        <div><span>Candidaturas</span><strong>${row.applications || 0}</strong></div>
+        <div><span>Avanços</span><strong>${row.selected || 0}</strong></div>
+        <div><span>Recusas</span><strong>${row.rejected || 0}</strong></div>
+      </div>
+      <div class="source-card-foot">
+        <span>${row.salaryAtOrAboveTarget || 0} com base ≥ R$ 3 mil</span>
+        <strong>${row.responseRate || 0}% de retorno</strong>
+      </div>
+    </article>`).join("") || `<div class="empty-state"><h3>Nenhuma fonte encontrada</h3><p>Tente outro nome.</p></div>`;
+  };
+  renderSources();
+  document.querySelector("#sourceFilter").addEventListener("input", renderSources);
+  document.querySelector("#sourceScan").onclick = () => runScanAndRefresh("sources");
+}
+
 async function logs() {
   const health = await json("/api/health");
   app.innerHTML = `<section class="notice-panel">
@@ -2118,6 +2359,7 @@ async function load(tab) {
     if (tab === "approved") return approved();
     if (tab === "informal") return informal();
     if (tab === "applications") return applications();
+    if (tab === "sources") return sourcesPage();
     if (tab === "actions") return applications();
     if (tab === "aiApply") return aiApplyPage();
     if (tab === "accounts") return accountsPage();
@@ -2139,7 +2381,7 @@ header.addEventListener("click", (event) => {
     const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
     localStorage.setItem("careerHunterTheme", next);
-    document.querySelector("#themeToggle").textContent = next === "dark" ? "Modo claro" : "Modo escuro";
+    document.querySelector("#themeToggle").textContent = next === "dark" ? "Claro" : "Escuro";
   }
   if (logout) {
     json("/api/auth/logout", { method: "POST" }).finally(() => {

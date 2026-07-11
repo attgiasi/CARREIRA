@@ -147,6 +147,12 @@ CREATE TABLE IF NOT EXISTS applications (
   availability_checked_at TEXT,
   availability_last_ok_at TEXT,
   availability_closed_at TEXT,
+  pipeline_stage INTEGER DEFAULT 1,
+  pipeline_outcome TEXT DEFAULT 'sem_retorno',
+  recruiter_status TEXT,
+  last_recruiter_email_at TEXT,
+  next_action TEXT,
+  next_action_due_at TEXT,
   notes TEXT
 );
 
@@ -199,6 +205,51 @@ CREATE TABLE IF NOT EXISTS application_attempts (
   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
   completed_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS recruiter_email_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  application_id INTEGER,
+  job_id INTEGER,
+  gmail_message_id TEXT NOT NULL,
+  gmail_thread_id TEXT,
+  received_at TEXT,
+  sender_name TEXT,
+  sender_email TEXT,
+  subject TEXT,
+  event_type TEXT,
+  pipeline_stage INTEGER DEFAULT 1,
+  outcome TEXT DEFAULT 'sem_retorno',
+  requires_action INTEGER DEFAULT 0,
+  action_summary TEXT,
+  action_url TEXT,
+  job_title TEXT,
+  company TEXT,
+  source_platform TEXT,
+  confidence REAL DEFAULT 0,
+  excerpt TEXT,
+  raw_json TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, gmail_message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_recruiter_events_user ON recruiter_email_events(user_id, received_at);
+CREATE INDEX IF NOT EXISTS idx_recruiter_events_application ON recruiter_email_events(application_id);
+
+CREATE TABLE IF NOT EXISTS gmail_sync_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  completed_at TEXT,
+  status TEXT,
+  scanned_messages INTEGER DEFAULT 0,
+  matched_messages INTEGER DEFAULT 0,
+  inserted_events INTEGER DEFAULT 0,
+  error_message TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_gmail_sync_user ON gmail_sync_runs(user_id, started_at);
 
 CREATE TABLE IF NOT EXISTS companies (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

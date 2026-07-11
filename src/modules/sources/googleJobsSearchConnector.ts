@@ -12,43 +12,22 @@ interface GoogleSearchItem {
 
 function buildQueries(settings: AgentSettings): string[] {
   const pairs = limitedSearchPairs(settings, 24);
-  const base = pairs.flatMap(({ role, location }) => [
-    `"${role}" vaga emprego "${location}" candidatar`,
-    `"${role}" "${location}" "trabalhe conosco" vaga`,
-    `"${role}" "${location}" "processo seletivo" vaga`,
-    `"${role}" "${location}" "candidate-se"`,
-    `"${role}" "${location}" "apply" "vaga"`
-  ]);
-  const platformFocused = pairs.slice(0, 14).flatMap(({ role, location }) => [
-    `site:linkedin.com/jobs/view ${role} ${location}`,
-    `site:gupy.io/jobs ${role} ${location}`,
-    `site:solides.jobs/vaga ${role} ${location}`,
-    `site:infojobs.com.br/vaga-de ${role} ${location}`,
-    `site:99jobs.com/jobs ${role} ${location}`,
-    `site:vagas.com.br/vagas ${role} ${location}`,
-    `site:br.indeed.com/viewjob ${role} ${location}`,
-    `site:netvagas.com.br/vaga ${role} ${location}`,
-    `site:solides.jobs/vaga ${role} ${location}`,
-    `site:ats.abler.com.br/jobs ${role} ${location}`,
-    `site:pandape.infojobs.com.br ${role} ${location}`,
-    `site:jobs.quickin.io ${role} ${location}`,
-    `site:jobbol.com.br/vagas ${role} ${location}`,
-    `site:catho.com.br/vagas ${role} ${location}`,
-    `site:empregos.com.br/vagas ${role} ${location}`,
-    `site:trabalhabrasil.com.br/vagas ${role} ${location}`,
-    `site:bne.com.br/vagas-de-emprego ${role} ${location}`,
-    `site:glassdoor.com.br/Vaga ${role} ${location}`,
-    `site:jobs.lever.co ${role} ${location}`,
-    `site:boards.greenhouse.io ${role} ${location}`
+  const focused = pairs.flatMap(({ role, location }) => [
+    `"${role}" "${location}" vaga salário restaurante hotel bar candidatar`,
+    `site:infojobs.com.br/vaga-de "${role}" "${location}"`,
+    `site:linkedin.com/jobs/view "${role}" "${location}"`,
+    `(site:gupy.io/jobs OR site:jobs.quickin.io OR site:solides.jobs/vaga) "${role}" "${location}"`,
+    `(site:ats.abler.com.br/jobs OR site:vagas.com.br/vagas OR site:br.indeed.com/viewjob) "${role}" "${location}"`,
+    `"${role}" "${location}" ("alto padrão" OR luxo OR resort OR hotel OR gastronomia) vaga`
   ]);
   return [
-    ...platformFocused,
-    ...base,
+    ...focused,
     `"SINE" vagas "${settings.profile.city}" "${settings.profile.state}"`,
     `"agência de emprego" vagas "${settings.profile.city}" "${settings.profile.state}"`,
     `"recrutamento e seleção" vagas "${settings.profile.city}" "${settings.profile.state}"`,
-    `"bartender" "Curitiba" "vagas"`,
-    `"atendimento" "Curitiba" "vagas"`
+    `"head bartender" (Paraná OR "Santa Catarina" OR "São Paulo") vaga`,
+    `"bartender" (hotel OR resort OR "alto padrão") (PR OR SC OR SP) vaga`,
+    `("experiência do cliente" OR "guest experience") (hotel OR restaurante OR gastronomia) (PR OR SC OR SP) vaga`
   ].slice(0, 140);
 }
 

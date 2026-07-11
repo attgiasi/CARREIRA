@@ -21,7 +21,7 @@
     "email": "att.giasi@gmail.com",
     "phone": "",
     "linkedin": "",
-    "summary": "Profissional com mais de 12 anos de experiência em hospitalidade premium, coquetelaria, atendimento ao cliente, eventos, liderança operacional, gestão de bar, treinamento e padronização de serviço. Perfil versátil, comunicativo e orientado à experiência do cliente, com repertório para atuar em atendimento, relacionamento, customer experience, customer success, backoffice, suporte, análise operacional, prevenção de falhas, consultoria e rotinas comerciais. Une execução prática, postura profissional, organização, leitura de ambiente, senso de dono e capacidade de manter padrão em operações de alta demanda.",
+    "summary": "Bartender sênior e profissional de hospitalidade com mais de 12 anos de experiência em bares, restaurantes, hotelaria, eventos e atendimento premium. Atua com coquetelaria clássica e autoral, liderança de bar, treinamento, padronização, estoque, fichas técnicas e experiência do cliente. Perfil preparado para posições de bartender, head bartender, chefia e supervisão de bar, consultoria de A&B e experiência do cliente em operações de alto padrão.",
     "education": {
       "highestLevel": "pos_graduacao",
       "degrees": [
@@ -40,37 +40,32 @@
     "barManagerMixologia": true,
     "eventosCerimonial": true,
     "atendimentoExperienciaCliente": true,
-    "sacBackoffice": true,
-    "prevencaoFraude": true,
-    "analiseOperacional": true,
+    "sacBackoffice": false,
+    "prevencaoFraude": false,
+    "analiseOperacional": false,
     "gestaoSupervisao": true,
     "consultoria": true,
     "freelancerEventos": true
   },
   "jobSearchPreferences": {
     "targetRoles": [
+      "Bartender Sênior",
       "Bartender",
+      "Barman",
+      "Head Bartender",
       "Mixologista",
       "Bar Manager",
       "Chefe de Bar",
       "Supervisor de Bar",
+      "Coordenador de Bar",
       "Consultor de Bares",
-      "Coordenador de Atendimento",
-      "Supervisor de Atendimento",
-      "Analista de Atendimento",
-      "Atendente de Relacionamento",
-      "Analista de Suporte",
-      "Customer Experience",
-      "Customer Success",
-      "Analista de Customer Success",
-      "Ouvidoria",
-      "Backoffice",
-      "Analista de Backoffice",
-      "Consultor Comercial Farmer",
-      "Analista de Prevenção à Fraude",
-      "Analista de Operações",
-      "Analista de Risco Operacional",
-      "Eventos e Hospitalidade"
+      "Gerente de Alimentos e Bebidas",
+      "Supervisor de Alimentos e Bebidas",
+      "Guest Experience",
+      "Experiência do Cliente em Hospitalidade",
+      "Treinador de Bar",
+      "Instrutor de Bebidas",
+      "Eventos e Hospitalidade Premium"
     ],
     "careerLevels": {
       "operacional": true,
@@ -116,8 +111,8 @@
       "estagio": false
     },
     "locations": {
-      "preferred": ["Curitiba", "Região Metropolitana de Curitiba", "Remoto Brasil", "Híbrido Curitiba"],
-      "acceptedStates": ["PR"],
+      "preferred": ["Curitiba e Região Metropolitana", "Paraná", "Florianópolis e região", "Santa Catarina", "São Paulo e Campinas", "São Paulo"],
+      "acceptedStates": ["PR", "SC", "SP"],
       "acceptedRemoteCountries": ["Brasil"],
       "rejectOutsidePreferredLocations": false
     },
@@ -150,9 +145,9 @@
     "penalizeWithoutSalary": true,
     "preferSalaryInformed": true,
     "askSalaryInDraft": true,
-    "rejectBelowMinimum": false,
+    "rejectBelowMinimum": true,
     "salaryByContractType": {
-      "clt": { "minimumMonthly": 2500, "desiredMonthly": 3500, "excellentMonthly": 5000 },
+      "clt": { "minimumMonthly": 3000, "desiredMonthly": 4000, "excellentMonthly": 5500 },
       "pj": { "minimumMonthly": 3500, "desiredMonthly": 5000, "excellentMonthly": 7000 },
       "freelancer": { "minimumDaily": 180, "desiredDaily": 250, "excellentDaily": 400 },
       "eventos": { "minimumDaily": 180, "desiredDaily": 300, "excellentDaily": 500 },
@@ -161,7 +156,7 @@
     "salaryExpectation": {
       "enabled": true,
       "requireApprovalBeforeAnswering": true,
-      "defaultCLT": "A partir de R$ 3.500, negociável conforme pacote de benefícios e responsabilidades.",
+      "defaultCLT": "A partir de R$ 3.500 de salário-base, negociável conforme escopo e responsabilidades. Benefícios e bonificações são avaliados separadamente.",
       "defaultPJ": "A partir de R$ 5.000, considerando escopo, carga horária e responsabilidades.",
       "defaultFreelancer": "A partir de R$ 250 por diária, ajustável conforme duração, deslocamento e complexidade do evento."
     }
@@ -235,9 +230,9 @@
   "strategy": {
     "mode": "quality_over_quantity",
     "searchAggressiveness": "alta",
-    "maxApplicationsPerDay": 5,
-    "onlyPrepareAboveScore": 75,
-    "onlyApplyAboveScore": 82,
+    "maxApplicationsPerDay": 12,
+    "onlyPrepareAboveScore": 78,
+    "onlyApplyAboveScore": 85,
     "prioritizePersonalizedApplications": true,
     "avoidGenericMassApply": true,
     "preferHighHireChance": true,

@@ -16,13 +16,16 @@ export function configuredLocations(settings: AgentSettings): string[] {
 
 export function limitedSearchPairs(settings: AgentSettings, maxPairs = 18): Array<{ role: string; location: string }> {
   const roles = configuredRoles(settings).slice(0, 9);
-  const locations = configuredLocations(settings).slice(0, 4);
+  const locations = configuredLocations(settings).slice(0, 6);
   const pairs: Array<{ role: string; location: string }> = [];
-  for (const role of roles) {
-    for (const location of locations) {
-      pairs.push({ role, location });
-      if (pairs.length >= maxPairs) return pairs;
-    }
+  const seen = new Set<string>();
+  for (let index = 0; pairs.length < maxPairs && index < roles.length * locations.length * 2; index += 1) {
+    const role = roles[index % roles.length];
+    const location = locations[index % locations.length];
+    const key = `${role}|${location}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    pairs.push({ role, location });
   }
   return pairs;
 }

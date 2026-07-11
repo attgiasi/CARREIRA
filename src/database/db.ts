@@ -78,9 +78,16 @@ export class CareerDatabase {
       ["availability_status", "TEXT DEFAULT 'nao_verificado'"],
       ["availability_checked_at", "TEXT"],
       ["availability_last_ok_at", "TEXT"],
-      ["availability_closed_at", "TEXT"]
+      ["availability_closed_at", "TEXT"],
+      ["pipeline_stage", "INTEGER DEFAULT 1"],
+      ["pipeline_outcome", "TEXT DEFAULT 'sem_retorno'"],
+      ["recruiter_status", "TEXT"],
+      ["last_recruiter_email_at", "TEXT"],
+      ["next_action", "TEXT"],
+      ["next_action_due_at", "TEXT"]
     ]);
     this.db.run("UPDATE applications SET created_at = COALESCE(created_at, CURRENT_TIMESTAMP), updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP)");
+    this.db.run("UPDATE applications SET pipeline_stage = COALESCE(pipeline_stage, 1), pipeline_outcome = COALESCE(pipeline_outcome, 'sem_retorno')");
     this.db.run("UPDATE jobs SET user_id = COALESCE(user_id, 1)");
     this.db.run("UPDATE informal_opportunities SET user_id = COALESCE(user_id, 1)");
     this.db.run("UPDATE candidate_profiles SET user_id = COALESCE(user_id, 1)");

@@ -1,12 +1,14 @@
-# Career Hunter Agent
+# Ápice - Carreira inteligente
 
-Agente local, seguro e modular para busca, análise, filtragem, preparação, candidatura assistida e acompanhamento de vagas formais e oportunidades informais para Giasi Mandela Silva.
+Produto multiusuário para busca, análise, candidatura assistida e acompanhamento de processos seletivos. O Ápice cruza vagas, candidaturas realmente enviadas e retornos do Gmail em um painel único, sem misturar pesquisas, tentativas e links pendentes com candidaturas reais.
 
 O objetivo não é sair se candidatando em massa. O agente funciona como assistente estratégico de carreira: encontra oportunidades, remove ruído, calcula risco, prepara materiais personalizados e coloca tudo em fila de aprovação.
 
 ## O que ele faz
 
 - Lê alertas de vagas do Gmail quando a API estiver configurada.
+- Classifica confirmações, recusas, entrevistas, avanços de fase, propostas e ações solicitadas por recrutadores.
+- Vincula cada retorno do Gmail à vaga pelo identificador do anúncio e, quando necessário, por cargo e empresa.
 - Importa links reais pelo painel ou por `data/manual-urls.txt`.
 - Importa mensagens copiadas/exportadas de grupos do WhatsApp em `data/whatsapp-vagas.txt`.
 - Mantém conectores preparados para Greenhouse, Lever, Gupy, RSS e páginas de carreira.
@@ -22,7 +24,10 @@ O objetivo não é sair se candidatando em massa. O agente funciona como assiste
 - Gera carta de apresentação.
 - Coloca candidatura em fila de aprovação.
 - Gera resumo diário e radar semanal.
-- Mostra painel local em `http://localhost:8788` com fluxo direto: Painel, Vagas, Aprovadas, Candidaturas, IA Candidatura, Freelas, Agências Conectadas, Meu Perfil e Logs.
+- Mostra painel local em `http://localhost:8788` com navegação direta: Painel, Vagas, Aprovadas, Candidaturas, Fontes e Meu currículo.
+- Separa candidaturas reais, selecionadas, não selecionadas, sem retorno, 2ª fase, 3ª fase e ações pendentes.
+- Exibe distribuição do salário-base sem somar benefícios, bônus, gratificações ou comissões.
+- Compara volume, taxa de retorno, avanços e salários por fonte de recrutamento.
 - Mantém perfis de candidatura para pessoas diferentes.
 - Pergunta dados ausentes, salva na memória do perfil e reutiliza nas próximas candidaturas.
 - Separa vagas aprovadas em: candidatura por IA, candidatura manual, e-mail, telefone, WhatsApp e vagas que ainda precisam de link real.
@@ -84,13 +89,24 @@ Edite `agent-settings.json`. Nele você controla:
 
 Por padrão, `dryRun=true`, `autoApply=false` e aprovação é obrigatória.
 
-## Gmail API
+## Gmail e retornos de recrutadores
+
+O Ápice aceita a autorização OAuth já gerada pelo agente do Gmail. No computador local, crie um arquivo `.env.gmail` com os caminhos dos arquivos existentes:
+
+```env
+GOOGLE_CREDENTIALS_PATH=C:\caminho\do\agente-gmail\credentials.json
+GOOGLE_TOKEN_PATH=C:\caminho\do\agente-gmail\token.json
+```
+
+O arquivo `.env.gmail` é ignorado pelo Git. Para Render ou outro servidor online, prefira os secrets `GOOGLE_CREDENTIALS_JSON` e `GOOGLE_TOKEN_JSON` com o conteúdo completo dos dois arquivos JSON.
+
+Também continua disponível a configuração legada por refresh token:
 
 1. Crie um projeto no Google Cloud.
 2. Ative Gmail API.
 3. Crie credenciais OAuth.
 4. Gere um refresh token com escopo de leitura e criação de rascunhos.
-5. Preencha:
+5. Preencha, se optar pelo modo legado:
 
 ```env
 GOOGLE_CLIENT_ID=
@@ -99,7 +115,9 @@ GOOGLE_REDIRECT_URI=
 GMAIL_REFRESH_TOKEN=
 ```
 
-Se não configurar Gmail, o sistema não quebra. Ele apenas registra no log e segue com fontes disponíveis.
+Se não configurar Gmail, o sistema não quebra. A busca continua funcionando, mas os indicadores de avanço, recusa e fases não serão atualizados por e-mail.
+
+No painel, use `Atualizar retornos` para executar a leitura imediatamente. A rotina `npm run scan` também sincroniza o Gmail depois da busca de vagas.
 
 ## Google Calendar
 

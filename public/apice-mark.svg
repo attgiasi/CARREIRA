@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="title">
+  <title id="title">Ápice</title>
+  <rect width="48" height="48" rx="10" fill="#10232e"/>
+  <path d="M11 34 23.8 10 37 34h-7.1l-6.2-12-6 12H11Z" fill="#ffffff"/>
+  <path d="M18.7 31h10.4l3.1 6H15.5l3.2-6Z" fill="#35b18a"/>
+  <circle cx="36.5" cy="11.5" r="3.5" fill="#f0b84a"/>
+</svg>

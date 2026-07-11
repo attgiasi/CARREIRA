@@ -6,13 +6,16 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { CareerDatabase } from "../../database/db.js";
 import { loadSettings } from "../../config/settings.js";
-import { refreshSecrets, secrets } from "../../config/secrets.js";
+import { hasGmailSecrets, refreshSecrets, secrets } from "../../config/secrets.js";
 import { normalizeJob } from "../jobs/normalizer.js";
 import { attachDuplicateMetadata, countDuplicateGroups } from "../jobs/duplicateDetector.js";
 import { buildApplicationPacket } from "../applications/applicationBuilder.js";
 import { enqueueApplication } from "../applications/approvalQueue.js";
 import { CandidateProfile, decideAutomation, MemoryAnswer } from "../applications/autoApplyEngine.js";
 import { AgentSettings } from "../../types.js";
+import { buildSalaryAnalytics, parseBaseSalary, sourceDisplayName } from "./analytics.js";
+import { getGmailConnectionStatus } from "../gmail/gmailClient.js";
+import { ACTUAL_APPLICATION_SQL, getRecruiterPipelineMetrics, syncRecruiterReplies } from "../gmail/recruiterReplyReader.js";
 import {
   clearSessionCookie,
   createSession,
@@ -168,7 +171,7 @@ function envStatus() {
     geminiConfigured: Boolean(secrets.geminiApiKey),
     geminiModel: secrets.geminiModel,
     googleSearchConfigured: Boolean(secrets.googleSearchApiKey && secrets.googleSearchEngineId),
-    gmailConfigured: Boolean(secrets.googleClientId && secrets.googleClientSecret && secrets.gmailRefreshToken),
+    gmailConfigured: hasGmailSecrets(),
     accountVaultConfigured: Boolean(secrets.accountVaultKey || process.env.ACCOUNT_VAULT_KEY),
     databaseUrl: secrets.databaseUrl,
     port: String(secrets.dashboardPort),
@@ -538,6 +541,36 @@ apiRouter.get("/summary", async (req, res) => {
     ORDER BY j.id DESC
     LIMIT 5
   `, [userId, userId]);
+  const pipeline = getRecruiterPipelineMetrics(db, userId);
+  const salaryRows = db.query<Record<string, unknown>>("SELECT salary FROM jobs WHERE user_id = ?", [userId]);
+  const salary = buildSalaryAnalytics(salaryRows, 3000);
+  const recentRecruiterEvents = db.query<Record<string, unknown>>(`
+    SELECT e.*, j.title, j.company, j.source, j.url
+    FROM recruiter_email_events e
+    LEFT JOIN jobs j ON j.id = e.job_id
+    WHERE e.user_id = ? AND e.event_type <> 'confirmation'
+    ORDER BY datetime(e.received_at) DESC, e.id DESC
+    LIMIT 8
+  `, [userId]);
+  const recruiterActions = db.query<Record<string, unknown>>(`
+    SELECT a.id as application_id, a.next_action, a.last_recruiter_email_at,
+           a.pipeline_stage, j.id as job_id, j.title, j.company, j.source, j.url
+    FROM applications a
+    LEFT JOIN jobs j ON j.id = a.job_id
+    WHERE a.user_id = ?
+      AND ${ACTUAL_APPLICATION_SQL}
+      AND TRIM(COALESCE(a.next_action, '')) <> ''
+      AND COALESCE(a.pipeline_outcome, '') <> 'negativa'
+    ORDER BY datetime(a.last_recruiter_email_at) DESC
+    LIMIT 8
+  `, [userId]);
+  const lastGmailSync = db.query<Record<string, unknown>>(`
+    SELECT started_at, completed_at, status, scanned_messages, matched_messages, inserted_events, error_message
+    FROM gmail_sync_runs
+    WHERE user_id = ?
+    ORDER BY id DESC
+    LIMIT 1
+  `, [userId])[0] ?? null;
   res.json({
     jobs,
     availableJobs,
@@ -562,7 +595,116 @@ apiRouter.get("/summary", async (req, res) => {
     newestJobs,
     lastFoundAt,
     lastAppliedAt,
+    pipeline,
+    salary,
+    recentRecruiterEvents,
+    recruiterActions,
+    lastGmailSync,
     environment: envStatus()
+  });
+});
+
+apiRouter.get("/gmail/status", async (req, res) => {
+  const db = await CareerDatabase.open();
+  const userId = currentUserId(req);
+  const connection = await getGmailConnectionStatus();
+  const lastSync = db.query<Record<string, unknown>>(`
+    SELECT started_at, completed_at, status, scanned_messages, matched_messages, inserted_events, error_message
+    FROM gmail_sync_runs WHERE user_id = ? ORDER BY id DESC LIMIT 1
+  `, [userId])[0] ?? null;
+  res.json({ ...connection, lastSync });
+});
+
+apiRouter.post("/gmail/sync", async (req, res) => {
+  const db = await CareerDatabase.open();
+  const userId = currentUserId(req);
+  try {
+    const result = await syncRecruiterReplies(db, userId);
+    res.json({ ok: true, ...result, pipeline: getRecruiterPipelineMetrics(db, userId) });
+  } catch (error) {
+    res.status(502).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+  }
+});
+
+apiRouter.get("/email-events", async (req, res) => {
+  const db = await CareerDatabase.open();
+  const userId = currentUserId(req);
+  const events = db.query<Record<string, unknown>>(`
+    SELECT e.*, j.title, j.company, j.source, j.url
+    FROM recruiter_email_events e
+    LEFT JOIN jobs j ON j.id = e.job_id
+    WHERE e.user_id = ?
+    ORDER BY datetime(e.received_at) DESC, e.id DESC
+    LIMIT 100
+  `, [userId]);
+  res.json({ events });
+});
+
+apiRouter.get("/sources", async (req, res) => {
+  const db = await CareerDatabase.open();
+  const userId = currentUserId(req);
+  const jobsBySource = db.query<Record<string, unknown>>("SELECT id, source, salary, fit_score FROM jobs WHERE user_id = ?", [userId]);
+  const applicationsBySource = db.query<Record<string, unknown>>(`
+    SELECT a.id, a.pipeline_stage, a.pipeline_outcome, a.next_action,
+           COALESCE(a.source_platform, j.source) as source, j.salary
+    FROM applications a
+    LEFT JOIN jobs j ON j.id = a.job_id
+    WHERE a.user_id = ? AND ${ACTUAL_APPLICATION_SQL}
+  `, [userId]);
+  const metrics = new Map<string, Record<string, number | string>>();
+  const ensure = (source: unknown) => {
+    const name = sourceDisplayName(source);
+    if (!metrics.has(name)) metrics.set(name, {
+      source: name,
+      jobs: 0,
+      applications: 0,
+      selected: 0,
+      rejected: 0,
+      pending: 0,
+      actions: 0,
+      salaryInformed: 0,
+      salaryAtOrAboveTarget: 0,
+      fitTotal: 0
+    });
+    return metrics.get(name)!;
+  };
+  for (const row of jobsBySource) {
+    const item = ensure(row.source);
+    item.jobs = Number(item.jobs) + 1;
+    item.fitTotal = Number(item.fitTotal) + Number(row.fit_score ?? 0);
+    const salary = parseBaseSalary(row.salary);
+    if (salary.informed && salary.monthly) item.salaryInformed = Number(item.salaryInformed) + 1;
+    if (salary.informed && salary.monthly && salary.minimum >= 3000) item.salaryAtOrAboveTarget = Number(item.salaryAtOrAboveTarget) + 1;
+  }
+  for (const row of applicationsBySource) {
+    const item = ensure(row.source);
+    item.applications = Number(item.applications) + 1;
+    const stage = Number(row.pipeline_stage ?? 1);
+    const outcome = String(row.pipeline_outcome ?? "sem_retorno");
+    if (stage >= 2 && outcome !== "negativa") item.selected = Number(item.selected) + 1;
+    else if (outcome === "negativa") item.rejected = Number(item.rejected) + 1;
+    else item.pending = Number(item.pending) + 1;
+    if (String(row.next_action ?? "").trim() && outcome !== "negativa") item.actions = Number(item.actions) + 1;
+  }
+  const sources = [...metrics.values()].map((item) => ({
+    ...item,
+    averageFit: Number(item.jobs) ? Math.round(Number(item.fitTotal) / Number(item.jobs)) : 0,
+    responseRate: Number(item.applications)
+      ? Math.round(((Number(item.selected) + Number(item.rejected)) / Number(item.applications)) * 1000) / 10
+      : 0
+  })) as Array<Record<string, number | string>>;
+  sources.sort((left, right) => Number(right.applications) - Number(left.applications) || Number(right.jobs) - Number(left.jobs));
+  const agencyFile = path.resolve(process.cwd(), "data/rh-agencies-curitiba.json");
+  const agencies = fs.existsSync(agencyFile) ? JSON.parse(fs.readFileSync(agencyFile, "utf8")) : [];
+  res.json({
+    sources,
+    agencies,
+    focus: [
+      "Bartender sênior, head bartender, chefe e supervisor de bar",
+      "Atendimento e experiência do cliente em hospitalidade de alto padrão",
+      "Gestão de A&B, treinamento e consultoria de bares e restaurantes"
+    ],
+    minimumBaseSalary: 3000
   });
 });
 
@@ -1104,10 +1246,11 @@ apiRouter.get("/applications", async (req, res) => {
       j.status as job_status,
       j.risk_flags,
       j.fit_reason,
-      j.hire_chance_reason
+      j.hire_chance_reason,
+      (SELECT e.action_url FROM recruiter_email_events e WHERE e.application_id = a.id ORDER BY datetime(e.received_at) DESC, e.id DESC LIMIT 1) as latest_email_url
     FROM applications a
     LEFT JOIN jobs j ON j.id = a.job_id
-    WHERE a.user_id = ?
+    WHERE a.user_id = ? AND ${ACTUAL_APPLICATION_SQL}
     ORDER BY a.id DESC
     LIMIT 300
   `, [userId]);
@@ -1337,7 +1480,7 @@ apiRouter.post("/applications/check-availability", async (req, res) => {
       `SELECT a.id, j.url
        FROM applications a
        LEFT JOIN jobs j ON j.id = a.job_id
-       WHERE a.user_id = ? AND (a.sent_by_agent = 1 OR a.application_status = 'Candidatura enviada')
+       WHERE a.user_id = ? AND ${ACTUAL_APPLICATION_SQL}
        ORDER BY COALESCE(a.availability_checked_at, '') ASC
        LIMIT 30`,
       [userId]

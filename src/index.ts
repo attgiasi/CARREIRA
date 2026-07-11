@@ -23,6 +23,7 @@ import { enqueueApplication } from "./modules/applications/approvalQueue.js";
 import { generateDailySummary } from "./modules/reports/dailySummary.js";
 import { generateWeeklyMarketRadar } from "./modules/reports/weeklyMarketRadar.js";
 import { AgentSettings, RawJob } from "./types.js";
+import { syncRecruiterReplies } from "./modules/gmail/recruiterReplyReader.js";
 
 function settingsForUser(db: CareerDatabase, userId: number): AgentSettings {
   const row = db.query<Record<string, unknown>>("SELECT settings_json FROM user_settings WHERE user_id = ? LIMIT 1", [userId])[0];
@@ -84,6 +85,13 @@ export async function scan(userId = runtimeUserId()): Promise<void> {
   for (const job of jobs) db.insertJob(job, userId);
   const rawInformal = await findInformalWork();
   for (const raw of rawInformal) db.insertInformal(normalizeInformal(raw), userId);
+  if (settings.sources.gmailAlerts) {
+    try {
+      await syncRecruiterReplies(db, userId);
+    } catch (error) {
+      logError("index.gmailSync", error, { userId });
+    }
+  }
   audit("index", "scan", `Scan concluído: ${jobs.length} vagas, ${rawInformal.length} informais.`);
   console.log(`Scan concluído: ${jobs.length} vagas e ${rawInformal.length} oportunidades informais.`);
 }
