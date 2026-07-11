@@ -12,6 +12,15 @@ const settings = loadSettings();
 const app = express();
 const port = Number(secrets.dashboardPort || settings.agent.dashboardPort || 8788);
 
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "same-origin");
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  next();
+});
 app.use(express.json({ limit: "12mb" }));
 app.use(express.static(path.resolve(process.cwd(), "public")));
 app.use("/", dashboardRouter);

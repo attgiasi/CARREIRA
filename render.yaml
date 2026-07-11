@@ -15,6 +15,10 @@ services:
         value: production
       - key: DATABASE_URL
         value: file:/var/data/jobs.sqlite
+      - key: STORAGE_ROOT
+        value: /var/data
+      - key: ALLOW_PUBLIC_REGISTRATION
+        value: "false"
       - key: OPENAI_MODEL
         value: gpt-4o-mini
       - key: GEMINI_MODEL

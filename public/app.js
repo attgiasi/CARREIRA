@@ -4,6 +4,7 @@ let currentTab = "dashboard";
 let aiApplyPrefill = null;
 let aiApplyReturnTab = "approved";
 let currentUser = null;
+let registrationOpen = true;
 let startupAiApplyPrefill = readAiApplyPrefillFromQuery();
 
 const tabs = [
@@ -98,7 +99,7 @@ async function json(url, options) {
   return data;
 }
 
-function renderAuth(message = "") {
+function renderAuth(message = "", canRegister = registrationOpen) {
   renderShell();
   app.innerHTML = `<section class="auth-shell">
     <div class="auth-hero">
@@ -109,7 +110,7 @@ function renderAuth(message = "") {
     <div class="auth-panel">
       <div class="stage-tabs" id="authTabs">
         <button data-auth-mode="login" class="active">Entrar</button>
-        <button data-auth-mode="register">Criar conta</button>
+        ${canRegister ? `<button data-auth-mode="register">Criar conta</button>` : ""}
       </div>
       <div id="authMessage" class="note ${message ? "" : "hidden"}">${message}</div>
       <form id="loginForm" class="auth-form">
@@ -117,13 +118,13 @@ function renderAuth(message = "") {
         <label>Senha<input name="password" type="password" autocomplete="current-password" required></label>
         <button class="primary" type="submit">Entrar</button>
       </form>
-      <form id="registerForm" class="auth-form hidden">
+      ${canRegister ? `<form id="registerForm" class="auth-form hidden">
         <label>Nome completo<input name="name" autocomplete="name" required></label>
         <label>E-mail<input name="email" type="email" autocomplete="email" required></label>
         <label>Senha<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
         <small>Use pelo menos 8 caracteres com letras e números.</small>
         <button class="primary" type="submit">Criar conta</button>
-      </form>
+      </form>` : `<div class="note"><strong>Cadastros protegidos</strong><p>Esta instalação já possui uma conta administradora. Solicite acesso ao responsável pelo painel.</p></div>`}
     </div>
   </section>`;
   document.querySelectorAll("[data-auth-mode]").forEach((button) => button.addEventListener("click", () => {
@@ -131,10 +132,10 @@ function renderAuth(message = "") {
     button.classList.add("active");
     const mode = button.dataset.authMode;
     document.querySelector("#loginForm").classList.toggle("hidden", mode !== "login");
-    document.querySelector("#registerForm").classList.toggle("hidden", mode !== "register");
+    document.querySelector("#registerForm")?.classList.toggle("hidden", mode !== "register");
   }));
   document.querySelector("#loginForm").addEventListener("submit", (event) => submitAuth(event, "login"));
-  document.querySelector("#registerForm").addEventListener("submit", (event) => submitAuth(event, "register"));
+  document.querySelector("#registerForm")?.addEventListener("submit", (event) => submitAuth(event, "register"));
 }
 
 async function submitAuth(event, mode) {
@@ -159,9 +160,10 @@ async function submitAuth(event, mode) {
 async function boot() {
   try {
     const session = await json("/api/auth/me");
+    registrationOpen = Boolean(session.registrationOpen);
     if (!session.authenticated) {
       currentUser = null;
-      renderAuth(session.users ? "" : "<strong>Primeiro acesso:</strong><p>Crie a conta administradora. Os dados atuais serão vinculados a ela.</p>");
+      renderAuth(session.users ? "" : "<strong>Primeiro acesso:</strong><p>Crie a conta administradora. Os dados atuais serão vinculados a ela.</p>", registrationOpen);
       return;
     }
     currentUser = session.user;
@@ -2036,8 +2038,15 @@ async function informal() {
 }
 
 async function settings() {
-  const [data, resumes, env, profileData] = await Promise.all([json("/api/settings"), json("/api/resumes"), json("/api/environment"), json("/api/profiles")]);
+  const [data, resumes, env, profileData, portableExport] = await Promise.all([
+    json("/api/settings"),
+    json("/api/resumes"),
+    json("/api/environment"),
+    json("/api/profiles"),
+    json("/api/settings/export?scope=github")
+  ]);
   const activeProfile = profileData.active || {};
+  const envLocked = Boolean(env.managedExternally || currentUser?.role !== "admin");
   const careerLevels = getPath(data, "jobSearchPreferences.careerLevels", {});
   const workStyles = getPath(data, "jobSearchPreferences.workStyles", {});
   const schedules = getPath(data, "jobSearchPreferences.schedulePreferences", {});
@@ -2059,7 +2068,7 @@ async function settings() {
       <button data-jump="freelas">Freelas</button>
       <button data-jump="fontes">Fontes</button>
       <button data-jump="seguranca">Segurança</button>
-      <button data-jump="codigo">Código</button>
+      <button data-jump="codigo">Sincronizar</button>
     </aside>
 
     <section class="settings-panel">
@@ -2106,23 +2115,24 @@ async function settings() {
 
       <div class="config-section" id="ia">
         <h3>IA, Google e sincronização online</h3>
+        ${env.managedExternally ? `<div class="note"><strong>Ambiente online protegido</strong><p>Esta página é a mesma da instalação local. No Render, as chaves ficam nas <em>Environment Variables</em> do serviço e nunca são gravadas ou exibidas pelo painel.</p></div>` : ""}
         <div class="form-grid">
-          <div class="field"><label>Chave OpenAI</label><input id="envOpenaiKey" type="password" placeholder="${env.openaiConfigured ? "Chave configurada. Digite outra para trocar." : "Cole sua OPENAI_API_KEY"}"><small>Não vai para o GitHub. Fica no .env ou nos segredos do servidor online.</small></div>
-          <div class="field"><label>Modelo OpenAI</label><input id="envOpenaiModel" value="${escapeHtml(env.openaiModel || "gpt-4o-mini")}"></div>
-          <div class="field"><label>Chave Gemini</label><input id="envGeminiKey" type="password" placeholder="${env.geminiConfigured ? "Chave configurada. Digite outra para trocar." : "Cole sua GEMINI_API_KEY"}"><small>Usada como apoio/fallback para análise e respostas quando o módulo estiver habilitado.</small></div>
-          <div class="field"><label>Modelo Gemini</label><input id="envGeminiModel" value="${escapeHtml(env.geminiModel || "gemini-1.5-flash")}"></div>
-          <div class="field"><label>Google Search API Key</label><input id="envGoogleKey" type="password" placeholder="${env.googleSearchConfigured ? "Configurada. Digite outra para trocar." : "Opcional"}"></div>
-          <div class="field"><label>Google Search Engine ID</label><input id="envGoogleCx" value=""></div>
-          <div class="field"><label>Banco online DATABASE_URL</label><input id="envDatabaseUrl" value="${escapeHtml(env.databaseUrl || "file:./data/jobs.sqlite")}"><small>Para Render/Railway use um caminho persistente, ex: file:/var/data/jobs.sqlite.</small></div>
-          <div class="field"><label>Porta do painel</label><input id="envPort" value="${escapeHtml(env.port || "8788")}"></div>
+          <div class="field"><label>Chave OpenAI</label><input id="envOpenaiKey" type="password" ${envLocked ? "disabled" : ""} placeholder="${env.openaiConfigured ? "Chave configurada. Digite outra para trocar." : "Cole sua OPENAI_API_KEY"}"><small>Não vai para o GitHub. Fica no .env local ou nos segredos do servidor online.</small></div>
+          <div class="field"><label>Modelo OpenAI</label><input id="envOpenaiModel" ${envLocked ? "disabled" : ""} value="${escapeHtml(env.openaiModel || "gpt-4o-mini")}"></div>
+          <div class="field"><label>Chave Gemini</label><input id="envGeminiKey" type="password" ${envLocked ? "disabled" : ""} placeholder="${env.geminiConfigured ? "Chave configurada. Digite outra para trocar." : "Cole sua GEMINI_API_KEY"}"><small>Usada como apoio para análise e respostas quando o módulo estiver habilitado.</small></div>
+          <div class="field"><label>Modelo Gemini</label><input id="envGeminiModel" ${envLocked ? "disabled" : ""} value="${escapeHtml(env.geminiModel || "gemini-1.5-flash")}"></div>
+          <div class="field"><label>Google Search API Key</label><input id="envGoogleKey" type="password" ${envLocked ? "disabled" : ""} placeholder="${env.googleSearchConfigured ? "Configurada. Digite outra para trocar." : "Opcional"}"></div>
+          <div class="field"><label>Google Search Engine ID</label><input id="envGoogleCx" ${envLocked ? "disabled" : ""} value=""></div>
+          <div class="field"><label>Banco online DATABASE_URL</label><input id="envDatabaseUrl" ${envLocked ? "disabled" : ""} value="${escapeHtml(env.databaseUrl || "file:./data/jobs.sqlite")}"><small>No Render, use um caminho persistente como <code>file:/var/data/jobs.sqlite</code>.</small></div>
+          <div class="field"><label>Porta do painel</label><input id="envPort" ${envLocked ? "disabled" : ""} value="${escapeHtml(env.port || "8788")}"></div>
         </div>
         <div class="env-status">
           <span class="state-chip ${env.openaiConfigured ? "success" : "warning"}">OpenAI ${env.openaiConfigured ? "ativa" : "pendente"}</span>
           <span class="state-chip ${env.geminiConfigured ? "success" : "info"}">Gemini ${env.geminiConfigured ? "ativa" : "opcional"}</span>
           <span class="state-chip ${env.googleSearchConfigured ? "success" : "info"}">Google Search ${env.googleSearchConfigured ? "ativo" : "opcional"}</span>
-          <span class="state-chip ${env.envExists ? "success" : "warning"}">.env ${env.envExists ? "criado" : "não criado"}</span>
+          <span class="state-chip ${env.managedExternally || env.envExists ? "success" : "warning"}">${env.managedExternally ? "Render protegido" : `.env ${env.envExists ? "criado" : "não criado"}`}</span>
         </div>
-        <button id="saveEnvConfig" class="primary">Salvar IA no .env</button><span id="envSaveStatus"></span>
+        <button id="saveEnvConfig" class="primary" ${envLocked ? "disabled" : ""}>${env.managedExternally ? "Gerenciado no Render" : "Salvar IA no .env"}</button><span id="envSaveStatus"></span>
       </div>
 
       <div class="config-section" id="busca">
@@ -2211,15 +2221,41 @@ async function settings() {
       </div>
 
       <div class="config-section" id="codigo">
-        <h3>Código gerado pelas suas escolhas</h3>
-        <p>Este é o arquivo <code>agent-settings.json</code> usado pelo agente.</p>
-        <textarea id="settingsCode" class="code-output" spellcheck="false"></textarea>
+        <h3>Sincronizar local, online e GitHub</h3>
+        <p>A instalação local e a online usam exatamente esta mesma página. Exporte aqui e importe no outro ambiente para repetir suas escolhas.</p>
+        <div class="sync-grid">
+          <div class="sync-panel">
+            <strong>Preferências seguras para GitHub</strong>
+            <p>Leva cargos, locais, salários, fontes e regras. Nome, e-mail, telefone, documentos e credenciais são removidos automaticamente.</p>
+            <div class="portable-actions">
+              <button id="copyPortableSettings" class="primary">Copiar JSON seguro</button>
+              <button id="downloadPortableSettings">Baixar para GitHub</button>
+            </div>
+          </div>
+          <div class="sync-panel private-backup">
+            <strong>Backup privado do perfil</strong>
+            <p>Inclui seus dados pessoais para migrar de um computador ao online. Não publique este arquivo no GitHub.</p>
+            <button id="downloadPrivateSettings">Baixar backup privado</button>
+          </div>
+        </div>
+        <textarea id="portableSettingsCode" class="code-output portable-code" spellcheck="false">${escapeHtml(JSON.stringify(portableExport, null, 2))}</textarea>
+        <div class="import-row">
+          <input id="settingsImportFile" type="file" accept="application/json,.json">
+          <button id="importPortableSettings" class="primary">Importar configuração</button>
+          <span id="importStatus"></span>
+        </div>
+        <details class="advanced-code">
+          <summary>Ver e editar a configuração completa desta conta</summary>
+          <div class="note"><strong>Conteúdo privado:</strong> este JSON pode conter dados do seu perfil. Use o arquivo seguro acima para GitHub.</div>
+          <textarea id="settingsCode" class="code-output" spellcheck="false"></textarea>
+        </details>
       </div>
     </section>
   </div>`;
 
   let currentSettings = structuredClone(data);
   const code = document.querySelector("#settingsCode");
+  const portableCode = document.querySelector("#portableSettingsCode");
   const readValue = (element) => {
     if (element.type === "checkbox") return element.checked;
     if (element.type === "number") return Number(element.value || 0);
@@ -2245,13 +2281,70 @@ async function settings() {
       document.querySelector("#saveStatus").textContent = "O código ainda não é um JSON válido.";
     }
   });
-  document.querySelector("#saveVisualSettings").onclick = async () => {
+  async function saveCurrentSettings(showFeedback = true) {
     syncCode();
     await json("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: code.value });
-    document.querySelector("#saveStatus").textContent = "Meu Perfil foi salvo.";
-    toast("Meu Perfil e preferências foram salvos.", "success");
+    if (showFeedback) {
+      document.querySelector("#saveStatus").textContent = "Meu Perfil foi salvo.";
+      toast("Meu Perfil e preferências foram salvos.", "success");
+    }
+  }
+  document.querySelector("#saveVisualSettings").onclick = () => saveCurrentSettings(true);
+
+  async function refreshPortableExport() {
+    await saveCurrentSettings(false);
+    const exported = await json("/api/settings/export?scope=github");
+    portableCode.value = JSON.stringify(exported, null, 2);
+    return exported;
+  }
+
+  function downloadJson(value, fileName) {
+    const blob = new Blob([`${JSON.stringify(value, null, 2)}\n`], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  document.querySelector("#copyPortableSettings").onclick = async () => {
+    const exported = await refreshPortableExport();
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(exported, null, 2));
+    } catch {
+      portableCode.select();
+      document.execCommand("copy");
+    }
+    toast("Configuração segura copiada. Ela pode ser versionada no GitHub.", "success");
+  };
+
+  document.querySelector("#downloadPortableSettings").onclick = async () => {
+    downloadJson(await refreshPortableExport(), "apice-preferencias-github.json");
+    toast("Arquivo seguro para GitHub gerado.", "success");
+  };
+
+  document.querySelector("#downloadPrivateSettings").onclick = async () => {
+    await saveCurrentSettings(false);
+    downloadJson(await json("/api/settings/export?scope=private"), "apice-backup-privado.json");
+    toast("Backup privado gerado. Guarde fora de repositórios públicos.", "success");
+  };
+
+  document.querySelector("#importPortableSettings").onclick = async () => {
+    const file = document.querySelector("#settingsImportFile").files?.[0];
+    const raw = file ? await file.text() : portableCode.value;
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return toast("O arquivo ou texto informado não é um JSON válido.", "error");
+    }
+    await json("/api/settings/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(parsed) });
+    toast("Configuração importada e aplicada nesta conta.", "success");
+    await settings();
   };
   document.querySelector("#saveEnvConfig").onclick = async () => {
+    if (envLocked) return toast("No ambiente online, altere as chaves nas Environment Variables do Render.", "info");
     const payload = {
           openaiApiKey: document.querySelector("#envOpenaiKey").value,
           openaiModel: document.querySelector("#envOpenaiModel").value,
@@ -2386,7 +2479,7 @@ header.addEventListener("click", (event) => {
   if (logout) {
     json("/api/auth/logout", { method: "POST" }).finally(() => {
       currentUser = null;
-      renderAuth("<strong>Sessão encerrada.</strong>");
+      boot();
     });
   }
 });

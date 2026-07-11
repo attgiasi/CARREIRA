@@ -27,14 +27,26 @@ O projeto já possui cadastro/login multiusuário no painel. Para transformar em
    - `GOOGLE_SEARCH_API_KEY`, se quiser importação automática dos links finais encontrados pelo Google.
    - `GOOGLE_SEARCH_ENGINE_ID`, se quiser importação automática dos links finais encontrados pelo Google.
    - `ACCOUNT_VAULT_KEY`, uma chave longa aleatória para criptografar senhas de contas conectadas.
+   - `ALLOW_PUBLIC_REGISTRATION=false`, para fechar novos cadastros após a primeira conta administradora.
 10. Clique em **Apply** / **Create Resources**.
 11. Aguarde o build terminar.
 12. Abra a URL pública gerada pelo Render.
 13. Crie a primeira conta administradora.
-14. Acesse **Meu Perfil** e salve as fontes de busca, IA e preferências.
+14. Acesse **Meu currículo > Sincronizar** e importe o JSON gerado na instalação local.
 15. Use **Buscar vagas** no painel ou configure scheduler para `npm run scan-all`.
 
 Com isso, as buscas, candidaturas, configurações, usuários e alterações feitas fora do computador local ficam no mesmo banco online.
+
+### Levar a configuração local para o online
+
+A página **Meu currículo** é a mesma no computador e no Render. No fim dela, abra **Sincronizar**:
+
+1. use **Baixar para GitHub** para gerar `apice-preferencias-github.json`, sem nome, e-mail, telefone, documentos ou credenciais;
+2. esse arquivo seguro pode ser versionado no repositório;
+3. para levar também os dados pessoais, use **Baixar backup privado** e mantenha o arquivo fora do GitHub;
+4. no painel online, selecione o arquivo e clique em **Importar configuração**.
+
+As chaves OpenAI, Gemini, Google, Gmail e `ACCOUNT_VAULT_KEY` nunca entram nesses arquivos. Localmente elas ficam no `.env`; no Render, ficam em **Environment Variables**.
 
 ### O Render é gratuito?
 

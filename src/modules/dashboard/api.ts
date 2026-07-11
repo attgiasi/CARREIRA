@@ -6,6 +6,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { CareerDatabase } from "../../database/db.js";
 import { loadSettings } from "../../config/settings.js";
+import { exportSettings, importSettings, SettingsExportScope } from "../../config/portableSettings.js";
 import { hasGmailSecrets, refreshSecrets, secrets } from "../../config/secrets.js";
 import { normalizeJob } from "../jobs/normalizer.js";
 import { attachDuplicateMetadata, countDuplicateGroups } from "../jobs/duplicateDetector.js";
@@ -19,6 +20,7 @@ import { ACTUAL_APPLICATION_SQL, getRecruiterPipelineMetrics, syncRecruiterRepli
 import {
   clearSessionCookie,
   createSession,
+  currentUser,
   currentUserId,
   getAuthUser,
   hashPassword,
@@ -45,7 +47,10 @@ function safeFileName(value: string): string {
 }
 
 function ensureUserResumeFolder(userId: number): string {
-  const folder = path.resolve(process.cwd(), "resumes", "users", String(userId));
+  const root = process.env.STORAGE_ROOT?.trim()
+    ? path.resolve(process.env.STORAGE_ROOT, "resumes", "users")
+    : path.resolve(process.cwd(), "resumes", "users");
+  const folder = path.join(root, String(userId));
   fs.mkdirSync(folder, { recursive: true });
   return folder;
 }
@@ -176,6 +181,7 @@ function envStatus() {
     databaseUrl: secrets.databaseUrl,
     port: String(secrets.dashboardPort),
     nodeEnv: process.env.NODE_ENV ?? "development",
+    managedExternally: process.env.NODE_ENV === "production",
     envKeys: [...envMap.keys()].filter((key) => !key.includes("KEY") && !key.includes("TOKEN") && !key.includes("SECRET"))
   };
 }
@@ -411,16 +417,23 @@ async function runAutomationForApplications(userId: number, ids: number[], mode:
 apiRouter.get("/auth/me", async (req, res) => {
   const db = await CareerDatabase.open();
   const user = await getAuthUser(req);
+  const users = Number(db.query("SELECT COUNT(*) as total FROM users")[0]?.total ?? 0);
+  const publicRegistration = process.env.ALLOW_PUBLIC_REGISTRATION === "true";
   res.json({
     authenticated: Boolean(user),
     user,
-    registrationOpen: true,
-    users: Number(db.query("SELECT COUNT(*) as total FROM users")[0]?.total ?? 0)
+    registrationOpen: users === 0 || publicRegistration,
+    users
   });
 });
 
 apiRouter.post("/auth/register", async (req, res) => {
   const db = await CareerDatabase.open();
+  const totalBefore = await userCount(db);
+  if (totalBefore > 0 && process.env.ALLOW_PUBLIC_REGISTRATION !== "true") {
+    res.status(403).json({ error: "Novos cadastros estão fechados. Solicite acesso ao administrador." });
+    return;
+  }
   const name = String(req.body?.name ?? "").trim();
   const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
@@ -438,7 +451,6 @@ apiRouter.post("/auth/register", async (req, res) => {
     res.status(409).json({ error: "Já existe uma conta com este e-mail." });
     return;
   }
-  const totalBefore = await userCount(db);
   const role = totalBefore === 0 ? "admin" : "user";
   db.run(
     "INSERT INTO users (name, email, password_hash, role, status) VALUES (?, ?, ?, ?, 'active')",
@@ -1610,11 +1622,37 @@ apiRouter.post("/settings", async (req, res) => {
   res.json({ ok: true });
 });
 
+apiRouter.get("/settings/export", async (req, res) => {
+  const db = await CareerDatabase.open();
+  const scope: SettingsExportScope = req.query.scope === "private" ? "private" : "github";
+  res.json(exportSettings(loadUserSettings(db, currentUserId(req)), scope));
+});
+
+apiRouter.post("/settings/import", async (req, res) => {
+  try {
+    const db = await CareerDatabase.open();
+    const userId = currentUserId(req);
+    const settings = importSettings(req.body, loadUserSettings(db, userId));
+    saveUserSettings(db, userId, settings);
+    res.json({ ok: true, settings });
+  } catch (error) {
+    res.status(400).json({ error: error instanceof Error ? error.message : "Não foi possível importar a configuração." });
+  }
+});
+
 apiRouter.get("/environment", (_req, res) => {
   res.json(envStatus());
 });
 
 apiRouter.post("/environment", (req, res) => {
+  if (currentUser(req).role !== "admin") {
+    res.status(403).json({ error: "Somente a conta administradora pode alterar o ambiente global." });
+    return;
+  }
+  if (process.env.NODE_ENV === "production") {
+    res.status(409).json({ error: "No ambiente online, configure chaves e banco nas Environment Variables do Render. O sistema não grava segredos no disco do servidor." });
+    return;
+  }
   const body = req.body as Record<string, string | undefined>;
   const updates: Record<string, string | undefined> = {
     OPENAI_MODEL: body.openaiModel?.trim() || "gpt-4o-mini",
@@ -1641,7 +1679,9 @@ apiRouter.get("/resumes", (req, res) => {
   const sharedFiles = fs.existsSync(folder)
     ? fs.readdirSync(folder).filter((file) => /\.(pdf|docx?|md)$/i.test(file) && file.toLowerCase() !== "readme.md")
     : [];
-  const userFolder = path.resolve(folder, "users", String(userId));
+  const userFolder = process.env.STORAGE_ROOT?.trim()
+    ? path.resolve(process.env.STORAGE_ROOT, "resumes", "users", String(userId))
+    : path.resolve(folder, "users", String(userId));
   const userFiles = fs.existsSync(userFolder)
     ? fs.readdirSync(userFolder).filter((file) => /\.(pdf|docx?|txt|md)$/i.test(file)).map((file) => `users/${userId}/${file}`)
     : [];
@@ -1658,7 +1698,9 @@ apiRouter.get("/career-profile", async (req, res) => {
   const sharedResumes = fs.existsSync(folder)
     ? fs.readdirSync(folder).filter((file) => /\.(pdf|docx?|md)$/i.test(file) && file.toLowerCase() !== "readme.md")
     : [];
-  const userFolder = path.resolve(folder, "users", String(userId));
+  const userFolder = process.env.STORAGE_ROOT?.trim()
+    ? path.resolve(process.env.STORAGE_ROOT, "resumes", "users", String(userId))
+    : path.resolve(folder, "users", String(userId));
   const userResumes = fs.existsSync(userFolder)
     ? fs.readdirSync(userFolder).filter((file) => /\.(pdf|docx?|txt|md)$/i.test(file)).map((file) => `users/${userId}/${file}`)
     : [];
