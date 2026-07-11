@@ -21,3 +21,4 @@ generated/reports/*
 
 resumes/*.pdf
 !resumes/README.md
+output/pdf/*.pdf

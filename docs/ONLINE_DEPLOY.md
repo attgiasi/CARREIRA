@@ -44,7 +44,8 @@ A página **Meu currículo** é a mesma no computador e no Render. No fim dela, 
 1. use **Baixar para GitHub** para gerar `apice-preferencias-github.json`, sem nome, e-mail, telefone, documentos ou credenciais;
 2. esse arquivo seguro pode ser versionado no repositório;
 3. para levar também os dados pessoais, use **Baixar backup privado** e mantenha o arquivo fora do GitHub;
-4. no painel online, selecione o arquivo e clique em **Importar configuração**.
+4. no painel online, selecione o arquivo e clique em **Importar configuração**;
+5. envie o PDF do currículo separadamente em **Currículo para candidaturas**, pois documentos não são embutidos no JSON.
 
 As chaves OpenAI, Gemini, Google, Gmail e `ACCOUNT_VAULT_KEY` nunca entram nesses arquivos. Localmente elas ficam no `.env`; no Render, ficam em **Environment Variables**.
 

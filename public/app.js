@@ -2234,7 +2234,7 @@ async function settings() {
           </div>
           <div class="sync-panel private-backup">
             <strong>Backup privado do perfil</strong>
-            <p>Inclui seus dados pessoais para migrar de um computador ao online. Não publique este arquivo no GitHub.</p>
+            <p>Inclui seus dados pessoais e escolhas. O arquivo PDF do currículo deve ser enviado separadamente. Não publique este JSON no GitHub.</p>
             <button id="downloadPrivateSettings">Baixar backup privado</button>
           </div>
         </div>
