@@ -698,8 +698,7 @@ section,
 .card-topline,
 .card-title-row,
 .card-footer,
-.card-actions,
-.embedded-browser-toolbar {
+.card-actions {
   display: flex;
   gap: 8px;
   align-items: flex-start;
@@ -707,8 +706,7 @@ section,
 
 .card-topline,
 .card-title-row,
-.card-footer,
-.embedded-browser-toolbar {
+.card-footer {
   justify-content: space-between;
 }
 
@@ -869,18 +867,15 @@ section,
 .ai-apply-workbench {
   display: grid;
   grid-template-columns: minmax(280px, 420px) minmax(0, 1fr);
-  gap: 14px;
+  gap: 24px;
   max-width: 100%;
   overflow: hidden;
 }
 
-.ai-apply-control,
-.embedded-browser-shell {
+.ai-apply-control {
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 14px;
-  background: var(--panel-soft);
+  padding: 4px 20px 4px 0;
+  border-right: 1px solid var(--line);
 }
 
 .ai-apply-control {
@@ -894,59 +889,100 @@ section,
   margin-bottom: 0;
 }
 
-.embedded-browser-shell {
+.application-launchpad {
+  min-width: 0;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 10px;
-  min-height: 0;
-  overflow: hidden;
+  gap: 16px;
+  align-content: start;
+  padding: 4px 0;
 }
 
-.embedded-browser-toolbar {
+.launchpad-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.launchpad-head h3 {
+  margin: 3px 0 0;
+}
+
+.official-job-summary {
+  display: grid;
+  gap: 6px;
   align-items: center;
+  min-width: 0;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.official-job-summary h3,
+.official-job-summary p,
+.official-job-summary small {
+  margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.embedded-browser-stage {
-  position: relative;
-  min-width: 0;
-  width: 100%;
-  height: clamp(430px, calc(100vh - 285px), 740px);
-  min-height: 360px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
+.official-job-summary > small:first-child {
+  color: var(--accent);
+  font-weight: 800;
 }
 
-#aiApplyFrame {
-  display: block;
-  width: 100%;
-  height: 100%;
-  min-width: 0;
-  border: 0;
-  background: var(--panel);
+.assistant-step-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
 }
 
-.frame-fallback {
-  position: absolute;
-  inset: 12px;
+.assistant-step-list li {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.assistant-step-list li > span {
   display: grid;
   place-items: center;
-  align-content: center;
-  gap: 10px;
-  padding: 18px;
-  border: 1px dashed var(--line-strong);
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--panel) 94%, transparent);
-  text-align: center;
-  color: var(--ink);
+  background: var(--panel-soft);
+  color: var(--muted);
+  font-weight: 900;
 }
 
-.frame-fallback small {
-  max-width: 560px;
+.assistant-step-list li.completed > span {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.assistant-step-list strong,
+.assistant-step-list small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.assistant-step-list small {
+  margin-top: 3px;
   color: var(--muted);
+}
+
+.launchpad-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .bookmarklet-box {
@@ -1799,7 +1835,7 @@ pre {
 
   .card-title-row,
   .card-topline,
-  .embedded-browser-toolbar {
+  .launchpad-head {
     display: grid;
     justify-content: stretch;
   }
@@ -1808,12 +1844,10 @@ pre {
     max-width: 100%;
   }
 
-  .embedded-browser-shell {
-    grid-template-rows: auto 440px;
-  }
-
-  .embedded-browser-stage {
-    height: 440px;
-    min-height: 360px;
+  .ai-apply-control {
+    padding-right: 0;
+    padding-bottom: 18px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
 }

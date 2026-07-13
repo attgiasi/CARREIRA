@@ -1238,8 +1238,8 @@ function renderAutomationResult(data) {
         <div class="section-head">
           <div><strong>Pacote de preenchimento #${escapeHtml(action.id || "")}</strong><small>Use no formulário oficial da vaga.</small></div>
           <div class="card-actions">
-            <button data-copy-autofill="${escapeHtml(autofill)}">Copiar autofill</button>
-            <a class="action primary-link" href="${escapeHtml(autofill)}">Preencher esta página</a>
+            <button data-copy-autofill="${escapeHtml(autofill)}">Copiar preenchimento</button>
+            <a data-autofill-bookmarklet class="action primary-link" href="${escapeHtml(autofill)}" title="Arraste para a barra de favoritos">Arrastar: preencher formulário</a>
           </div>
         </div>
         <div class="field-copy-grid">${fields.map(([key, value]) => `<div class="field-copy-item">
@@ -1270,6 +1270,19 @@ function setAiApplyPrefill(data) {
     autoLoad: Boolean(data?.autoLoad),
     autoPrepare: Boolean(data?.autoPrepare)
   };
+}
+
+function openOfficialJob(url) {
+  const value = String(url || "").trim();
+  if (!value || isGoogleSearchUrl(value)) return false;
+  try {
+    const parsed = new URL(value);
+    if (!/^https?:$/.test(parsed.protocol)) return false;
+  } catch {
+    return false;
+  }
+  window.open(value, "_blank", "noopener,noreferrer");
+  return true;
 }
 
 function buildAiApplyBookmarklet() {
@@ -1741,10 +1754,9 @@ async function aiApplyPage(initialMessage = "", prefill = null) {
   const bookmarklet = buildAiApplyBookmarklet();
   app.innerHTML = `<section class="page-panel">
     <div class="page-title-row">
-      <div><span class="eyebrow">IA Candidatura</span><h2>Colar link e acelerar candidatura</h2><p>Cole o link real da vaga. A IA importa, prepara seus dados e mostra exatamente o que preencher.</p></div>
+      <div><span class="eyebrow">IA Candidatura</span><h2>Assistente de candidatura</h2><p>A vaga abre no site oficial. O Ápice prepara seus dados, currículo e respostas sem quebrar a navegação.</p></div>
       <div class="toolbar-actions">
         <button id="backFromAiApply">Voltar</button>
-        <button data-tab="applications">Candidaturas</button>
         <button data-tab="applications">Candidaturas</button>
       </div>
     </div>
@@ -1752,20 +1764,20 @@ async function aiApplyPage(initialMessage = "", prefill = null) {
     <div class="ai-apply-workbench">
       <section class="ai-apply-control">
         <span class="eyebrow">Link real</span>
-        <h3>Navegador de candidatura</h3>
-        <p>Cole uma vaga individual. Se o site permitir visualização embutida, ele aparece ao lado. Se bloquear, use Abrir fonte.</p>
+        <h3>Preparar candidatura</h3>
+        <p>Cole uma vaga individual. Páginas de pesquisa não entram: use sempre o anúncio oficial da empresa ou do portal.</p>
         <label>Link da vaga<input id="aiApplyUrl" placeholder="https://empresa.com/vaga/oficial" value="${escapeHtml(initial?.url || "")}"></label>
         <div class="form-grid">
           <label>Cargo opcional<input id="aiApplyTitle" placeholder="Ex.: Atendente, Bartender, Comercial" value="${escapeHtml(initial?.title || "")}"></label>
           <label>Empresa opcional<input id="aiApplyCompany" placeholder="Nome da empresa" value="${escapeHtml(initial?.company || "")}"></label>
         </div>
         <div class="card-actions">
-          <button id="loadAiFrame">Carregar página</button>
-          <button id="vaiIa" class="primary">VAI IA</button>
+          <a id="openAiApplyExternal" class="action primary-link hidden" target="_blank" rel="noreferrer">Abrir vaga no site oficial</a>
+          <button id="vaiIa" class="primary">Preparar com IA</button>
         </div>
         <div class="bookmarklet-box">
-          <strong>Favorito inteligente</strong>
-          <small>Arraste o botão para a barra de favoritos. Quando estiver em uma vaga real, clique nele para mandar o link direto para esta aba.</small>
+          <strong>Trazer vaga para o Ápice</strong>
+          <small>Arraste o botão para a barra de favoritos. Ao encontrar uma vaga real, use-o para importar o link direto para este assistente.</small>
           <div class="card-actions">
             <a id="aiBookmarkletLink" class="action primary-link" href="${escapeHtml(bookmarklet)}">Importar vaga atual</a>
             <button id="copyAiBookmarklet" type="button">Copiar favorito</button>
@@ -1773,68 +1785,93 @@ async function aiApplyPage(initialMessage = "", prefill = null) {
           <textarea id="aiBookmarkletCode" readonly rows="3">${escapeHtml(bookmarklet)}</textarea>
         </div>
         <div class="notice-mini">
-          <strong>Como funciona</strong>
-          <small>A IA prepara currículo, carta, respostas e campos. Ela não burla CAPTCHA, bloqueios, rastreamento ou regras de sites. O envio final de dados pessoais depende de canal permitido e da sua confirmação.</small>
+          <strong>Proteção da sua conta</strong>
+          <small>A IA não tenta contornar CAPTCHA, login, bloqueios ou regras do portal. Campos desconhecidos aparecem como perguntas e podem ser memorizados para a próxima candidatura.</small>
         </div>
       </section>
-      <section class="embedded-browser-shell">
-        <div class="embedded-browser-toolbar">
-          <span id="embeddedStatus">Aguardando link</span>
-          <a id="openAiApplyExternal" class="action hidden" target="_blank" rel="noreferrer">Abrir fonte</a>
+      <section class="application-launchpad">
+        <div class="launchpad-head">
+          <div><span class="eyebrow">Fluxo seguro</span><h3>Site oficial + assistência do Ápice</h3></div>
+          <span id="officialLinkState" class="state-chip">Aguardando link</span>
         </div>
-        <div class="embedded-browser-stage">
-          <iframe id="aiApplyFrame" title="Página da vaga" sandbox="allow-forms allow-popups allow-same-origin allow-scripts" referrerpolicy="no-referrer"></iframe>
-          <div id="frameFallback" class="frame-fallback hidden">
-            <strong>Este site pode bloquear a visualização interna.</strong>
-            <small>Use Abrir fonte para concluir no site oficial. A IA continua preparando currículo, carta e respostas por aqui.</small>
-            <a id="frameFallbackExternal" class="action primary-link" target="_blank" rel="noreferrer">Abrir fonte oficial</a>
-          </div>
+        <div class="official-job-summary">
+          <small id="officialDomain">Nenhuma fonte selecionada</small>
+          <h3 id="officialJobTitle">Cole ou escolha uma vaga</h3>
+          <p id="officialJobCompany">O anúncio será aberto fora do painel para funcionar corretamente.</p>
+          <small id="officialJobUrl">O Ápice continuará aberto para preparar e acompanhar a inscrição.</small>
+        </div>
+        <ol class="assistant-step-list">
+          <li id="assistantStepOpen"><span>1</span><div><strong>Abrir o anúncio oficial</strong><small>Login, anexos e formulários funcionam na página original.</small></div></li>
+          <li id="assistantStepPrepare"><span>2</span><div><strong>Preparar com IA</strong><small>O agente organiza currículo, carta, respostas e campos do perfil.</small></div></li>
+          <li><span>3</span><div><strong>Revisar o preenchimento</strong><small>Confira campos sensíveis, perguntas específicas e anexos antes do envio.</small></div></li>
+          <li><span>4</span><div><strong>Confirmar e acompanhar</strong><small>Depois do envio, registre a candidatura para monitorar retornos pelo Gmail.</small></div></li>
+        </ol>
+        <div class="launchpad-actions">
+          <a id="openAiApplyOfficial" class="action primary-link hidden" target="_blank" rel="noreferrer">Abrir vaga no site oficial</a>
+          <button id="copyOfficialUrl" type="button" disabled>Copiar link</button>
+        </div>
+        <div class="notice-mini">
+          <strong>Por que abre em outra aba?</strong>
+          <small>Portais de emprego bloqueiam janelas incorporadas por segurança. Abrir a fonte oficial evita telas brancas, páginas cortadas e falhas de login.</small>
         </div>
       </section>
     </div>
   </section>`;
 
   const urlInput = document.querySelector("#aiApplyUrl");
-  const frame = document.querySelector("#aiApplyFrame");
-  const status = document.querySelector("#embeddedStatus");
-  const external = document.querySelector("#openAiApplyExternal");
-  const fallback = document.querySelector("#frameFallback");
-  const fallbackExternal = document.querySelector("#frameFallbackExternal");
+  const titleInput = document.querySelector("#aiApplyTitle");
+  const companyInput = document.querySelector("#aiApplyCompany");
+  const state = document.querySelector("#officialLinkState");
+  const externalLinks = [document.querySelector("#openAiApplyExternal"), document.querySelector("#openAiApplyOfficial")];
+  const copyUrl = document.querySelector("#copyOfficialUrl");
   const normalizeUrl = () => urlInput.value.trim();
   const applicationId = Number(initial?.applicationId || 0);
-  let frameLoadTimer = null;
-  const showFrameFallback = (url, message = "Visualização interna indisponível") => {
-    status.textContent = message;
-    fallbackExternal.href = url;
-    fallback.classList.remove("hidden");
-  };
-  const loadFrame = () => {
+  const activateOfficialLink = () => {
     const url = normalizeUrl();
-    if (!url) return showInlineResult("#aiApplyResult", "Cole o link real da vaga primeiro.");
-    if (isGoogleSearchUrl(url)) {
-      showInlineResult("#aiApplyResult", "<strong>Use o link final da vaga.</strong><p>Este link é uma página de busca do Google. Abra o resultado da empresa ou do site de vagas e importe a URL da vaga individual.</p>");
-      return;
+    if (!url) {
+      showInlineResult("#aiApplyResult", "Cole o link real da vaga primeiro.");
+      return false;
     }
+    if (isGoogleSearchUrl(url)) {
+      showInlineResult("#aiApplyResult", "<strong>Use o link final da vaga.</strong><p>Abra um resultado da empresa ou do portal e importe a URL do anúncio individual.</p>");
+      return false;
+    }
+    let parsed;
     try {
-      new URL(url);
+      parsed = new URL(url);
+      if (!/^https?:$/.test(parsed.protocol)) throw new Error("protocol");
     } catch {
       showInlineResult("#aiApplyResult", "Informe um link completo começando com http:// ou https://.");
-      return;
+      return false;
     }
-    if (frameLoadTimer) window.clearTimeout(frameLoadTimer);
-    fallback.classList.add("hidden");
-    frame.src = "about:blank";
-    frame.src = url;
-    external.href = url;
-    fallbackExternal.href = url;
-    external.classList.remove("hidden");
-    status.textContent = "Carregando visualização segura";
-    frameLoadTimer = window.setTimeout(() => showFrameFallback(url), 4200);
+    externalLinks.forEach((link) => {
+      link.href = url;
+      link.classList.remove("hidden");
+    });
+    copyUrl.disabled = false;
+    state.textContent = "Fonte pronta";
+    state.className = "state-chip success";
+    document.querySelector("#officialDomain").textContent = parsed.hostname.replace(/^www\./, "");
+    document.querySelector("#officialJobTitle").textContent = titleInput.value.trim() || "Vaga oficial";
+    document.querySelector("#officialJobCompany").textContent = companyInput.value.trim() || "Empresa a confirmar";
+    document.querySelector("#officialJobUrl").textContent = url;
+    document.querySelector("#assistantStepOpen").classList.add("completed");
+    return true;
   };
-  frame.addEventListener("load", () => {
-    if (frameLoadTimer) window.clearTimeout(frameLoadTimer);
-    if (frame.src && frame.src !== "about:blank") status.textContent = "Visualização carregada. Se ficar em branco, use Abrir fonte.";
+
+  urlInput.addEventListener("input", () => {
+    state.textContent = "Link alterado";
+    state.className = "state-chip warning";
   });
+  document.querySelector("#copyOfficialUrl").onclick = async () => {
+    if (!activateOfficialLink()) return;
+    try {
+      await navigator.clipboard.writeText(normalizeUrl());
+      toast("Link oficial copiado.", "success");
+    } catch {
+      toast("Não consegui copiar automaticamente.", "error");
+    }
+  };
   document.querySelector("#aiBookmarkletLink").addEventListener("click", (event) => {
     event.preventDefault();
     toast("Arraste este botão para a barra de favoritos ou use Copiar favorito.", "info");
@@ -1851,8 +1888,8 @@ async function aiApplyPage(initialMessage = "", prefill = null) {
     }
   };
   const prepareWithAi = async () => {
+    if (!activateOfficialLink()) return;
     const url = normalizeUrl();
-    if (!url) return showInlineResult("#aiApplyResult", "Cole o link real da vaga primeiro.");
     let result;
     let preparedIds = applicationId ? [applicationId] : [];
     if (applicationId) {
@@ -1867,8 +1904,8 @@ async function aiApplyPage(initialMessage = "", prefill = null) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url,
-          title: document.querySelector("#aiApplyTitle").value.trim() || undefined,
-          company: document.querySelector("#aiApplyCompany").value.trim() || undefined
+          title: titleInput.value.trim() || undefined,
+          company: companyInput.value.trim() || undefined
         })
       });
       const approvedResult = await json("/api/jobs/approve-selected", {
@@ -1882,20 +1919,21 @@ async function aiApplyPage(initialMessage = "", prefill = null) {
         ? await json("/api/applications/ai-apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: appIds }) })
         : { modeLabel: "Link importado", actions: [] };
     }
-    showInlineResult("#aiApplyResult", `${renderAutomationResult(result)}<p>Depois de revisar/preencher no site, registre o envio para mover a vaga para Candidaturas e acompanhar disponibilidade.</p>${markSentButton(preparedIds, "Registrei minha candidatura")}`);
+    document.querySelector("#assistantStepPrepare").classList.add("completed");
+    state.textContent = "Pacote pronto";
+    state.className = "state-chip success";
+    showInlineResult("#aiApplyResult", `${renderAutomationResult(result)}<p>Abra a fonte oficial, revise o preenchimento e registre o envio para acompanhar os retornos.</p>${markSentButton(preparedIds, "Registrei minha candidatura")}`);
     toast("IA preparou a candidatura para o link informado.", "success");
   };
-  document.querySelector("#loadAiFrame").onclick = loadFrame;
   document.querySelector("#vaiIa").onclick = prepareWithAi;
   document.querySelector("#backFromAiApply").onclick = () => load(aiApplyReturnTab || "applications");
-  if (initial?.url && initial.autoLoad) {
-    loadFrame();
-    showInlineResult("#aiApplyResult", "<strong>Link carregado.</strong><p>Revise a página aberta e clique em VAI IA para preparar a candidatura com seu currículo.</p>");
+  if (initial?.url) {
+    activateOfficialLink();
+    if (initial.autoLoad && !initial.autoPrepare) {
+      showInlineResult("#aiApplyResult", "<strong>Vaga pronta para abrir.</strong><p>Use Abrir vaga no site oficial e depois Prepare com IA.</p>");
+    }
   }
-  if (initial?.url && initial.autoPrepare) {
-    loadFrame();
-    await prepareWithAi();
-  }
+  if (initial?.url && initial.autoPrepare) await prepareWithAi();
 }
 
 async function profilesPage() {
@@ -2565,10 +2603,12 @@ app.addEventListener("click", (event) => {
   const saveMemory = event.target.closest("[data-save-memory]");
   const copyValue = event.target.closest("[data-copy-value]");
   const copyAutofill = event.target.closest("[data-copy-autofill]");
+  const autofillBookmarklet = event.target.closest("[data-autofill-bookmarklet]");
   if (detail) jobDetail(detail.dataset.detail, currentTab);
   if (tab) load(tab.dataset.tab);
   if (jobAi) {
     const jobId = Number(jobAi.dataset.jobAi);
+    openOfficialJob(jobAi.dataset.jobUrl);
     json("/api/jobs/approve-selected", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [jobId] }) })
       .then((data) => {
         const applicationId = data.applicationIds?.[0] || "";
@@ -2595,7 +2635,12 @@ app.addEventListener("click", (event) => {
       .then(() => toast("Autofill copiado. Abra a vaga oficial, cole na barra de endereço e execute.", "success"))
       .catch(() => toast("Não consegui copiar automaticamente.", "error"));
   }
+  if (autofillBookmarklet) {
+    event.preventDefault();
+    toast("Arraste este botão para a barra de favoritos. Use-o na página oficial depois de preparar a candidatura.", "info");
+  }
   if (accelerate) {
+    openOfficialJob(accelerate.dataset.accelerateUrl);
     aiApplyReturnTab = currentTab || "applications";
     setAiApplyPrefill({
       url: accelerate.dataset.accelerateUrl,
@@ -2617,6 +2662,7 @@ app.addEventListener("click", (event) => {
   if (aiApply) {
     const url = String(aiApply.dataset.applicationUrl || "").trim();
     if (url && !isGoogleSearchUrl(url)) {
+      openOfficialJob(url);
       aiApplyReturnTab = currentTab || "applications";
       setAiApplyPrefill({
         url,
