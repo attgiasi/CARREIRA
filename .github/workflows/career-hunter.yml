@@ -41,7 +41,7 @@ jobs:
         run: npm run score
 
       - name: Prepare applications
-        run: npm run prepare
+        run: npm run prepare-applications
 
       - name: Daily summary
         run: npm run daily-summary

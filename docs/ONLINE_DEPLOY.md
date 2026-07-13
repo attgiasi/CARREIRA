@@ -14,9 +14,7 @@ O projeto já possui cadastro/login multiusuário no painel. Para transformar em
 4. Escolha **Blueprint**.
 5. Conecte o GitHub, selecione o repositório `CARREIRA` e confirme o arquivo `render.yaml`.
 6. Em **Service name**, mantenha `career-hunter-agent` ou escolha um nome curto.
-7. Em **Instance type**, escolha:
-   - **Free** apenas para teste e demonstração;
-   - **Starter** ou superior para uso real com dados importantes.
+7. O arquivo `render.yaml` usa **Starter** para preservar os dados. Para uma demonstração gratuita, crie o serviço manualmente como **Free** usando as configurações de `render-free.yaml`.
 8. Confira o disco persistente:
    - nome: `career-hunter-data`;
    - mount path: `/var/data`;
@@ -27,6 +25,7 @@ O projeto já possui cadastro/login multiusuário no painel. Para transformar em
    - `GOOGLE_SEARCH_API_KEY`, se quiser importação automática dos links finais encontrados pelo Google.
    - `GOOGLE_SEARCH_ENGINE_ID`, se quiser importação automática dos links finais encontrados pelo Google.
    - `ACCOUNT_VAULT_KEY`, uma chave longa aleatória para criptografar senhas de contas conectadas.
+   - `GMAIL_SYNC_INTERVAL_MINUTES=30`, para atualizar retornos, alertas e newsletters automaticamente.
    - `ALLOW_PUBLIC_REGISTRATION=false`, para fechar novos cadastros após a primeira conta administradora.
 10. Clique em **Apply** / **Create Resources**.
 11. Aguarde o build terminar.
@@ -58,10 +57,10 @@ O Render tem Web Services gratuitos, mas o plano grátis tem limitações import
 
 ## Fluxo online do produto
 
-- **Vagas**: oportunidades encontradas e ainda não aprovadas.
-- **Aprovadas**: vagas escolhidas por você para candidatura. São separadas por IA, manual, e-mail, telefone, WhatsApp e precisa link real.
-- **Candidaturas**: mostra o próximo passo de cada vaga, separando IA pode fazer, eu faço, precisa link real e já candidatadas.
-- **IA Candidatura**: cole o link real da vaga para importar, aprovar e preparar dados de preenchimento.
+- **Vagas**: oportunidades encontradas. Selecione e escolha Candidatar com IA ou Preparar para eu fazer.
+- **Candidaturas**: reúne vagas ainda não enviadas, candidaturas realizadas, seleções, recusas e retornos do Gmail.
+- **Próximas ações**: mostra somente o que exige uma ação sua agora.
+- **IA Candidatura**: cole o link real da vaga para importar e preparar os dados de preenchimento.
 - **Agências Conectadas**: central de logins de InfoJobs, Vagas.com, Gupy, Catho, SINE e outros portais. Senhas ficam criptografadas com `ACCOUNT_VAULT_KEY`.
 - **Meu Perfil**: currículo, dados pessoais, preferências de vagas, fontes de busca, IA e código gerado.
 
@@ -104,7 +103,9 @@ Para buscar vagas mesmo fora do computador local:
 
 O Google pode ser usado para aumentar o volume, mas o sistema deve salvar somente os links finais de vagas que aparecem nos resultados. Páginas do tipo `google.com/search` continuam bloqueadas.
 
-Para uma conta específica, use `CAREER_HUNTER_USER_ID=ID_DO_USUARIO npm run scan`. Para todos os usuários ativos, use `npm run scan-all`. O mesmo vale para preparo: `npm run prepare` por usuário ou `npm run prepare-all` para todos.
+O Gmail é lido de duas formas: respostas de recrutadores atualizam o funil; alertas e newsletters fornecem links individuais de vagas. O painel atualiza automaticamente no intervalo definido por `GMAIL_SYNC_INTERVAL_MINUTES` e também oferece o botão **Atualizar Gmail agora**.
+
+Para uma conta específica, use `CAREER_HUNTER_USER_ID=ID_DO_USUARIO npm run scan`. Para todos os usuários ativos, use `npm run scan-all`. O mesmo vale para preparo: `npm run prepare-applications` por usuário ou `npm run prepare-all` para todos.
 
 ## Rodar com Docker
 

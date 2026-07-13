@@ -222,7 +222,7 @@ npm run agent
 npm run dashboard
 npm run scan
 npm run score
-npm run prepare
+npm run prepare-applications
 npm run daily-summary
 npm run weekly-radar
 npm run test
@@ -302,7 +302,7 @@ GitHub sozinho não mantém este painel online porque o app depende de Node.js, 
 
 O painel já possui cadastro/login multiusuário. No primeiro acesso online, crie a conta administradora; os dados antigos do banco local serão vinculados ao primeiro usuário criado. Depois disso, cada pessoa usa sua própria conta, com vagas, candidaturas, configurações, perfis e memória separados.
 
-Para automação online em todos os usuários ativos, use `npm run scan-all` e `npm run prepare-all`. Para rodar em apenas um usuário, defina `CAREER_HUNTER_USER_ID` e use `npm run scan` ou `npm run prepare`.
+Para automação online em todos os usuários ativos, use `npm run scan-all` e `npm run prepare-all`. Para rodar em apenas um usuário, defina `CAREER_HUNTER_USER_ID` e use `npm run scan` ou `npm run prepare-applications`.
 
 A aba **Agências Conectadas** centraliza acessos de InfoJobs, Vagas.com, Gupy, Catho, SINE e outros portais. Em produção, configure `ACCOUNT_VAULT_KEY` no Render para criptografar senhas conectadas.
 
@@ -310,6 +310,7 @@ Arquivos preparados:
 
 - `Dockerfile`
 - `render.yaml`
+- `render-free.yaml` (demonstração sem persistência)
 - `docs/ONLINE_DEPLOY.md`
 
 No Render, use `DATABASE_URL=file:/var/data/jobs.sqlite` e configure um disco persistente em `/var/data`. As chaves ficam em environment variables do serviço, não no repositório.
@@ -339,4 +340,4 @@ Abra:
 http://localhost:8788
 ```
 
-No primeiro acesso, cadastre ou entre com sua conta. Abas disponíveis: Painel, Vagas, Aprovadas, Candidaturas, IA Candidatura, Freelas, Agências Conectadas, Meu Perfil e Logs.
+No primeiro acesso, cadastre ou entre com sua conta. O fluxo principal é: Painel, Vagas, Candidaturas, Próximas ações, Fontes e Meu currículo.

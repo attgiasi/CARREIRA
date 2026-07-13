@@ -16,7 +16,8 @@ import { CandidateProfile, decideAutomation, MemoryAnswer } from "../application
 import { AgentSettings } from "../../types.js";
 import { buildSalaryAnalytics, parseBaseSalary, sourceDisplayName } from "./analytics.js";
 import { getGmailConnectionStatus } from "../gmail/gmailClient.js";
-import { ACTUAL_APPLICATION_SQL, getRecruiterPipelineMetrics, syncRecruiterReplies } from "../gmail/recruiterReplyReader.js";
+import { ACTUAL_APPLICATION_SQL, getRecruiterPipelineMetrics } from "../gmail/recruiterReplyReader.js";
+import { syncCareerGmail } from "../gmail/careerGmailSync.js";
 import {
   clearSessionCookie,
   createSession,
@@ -624,15 +625,15 @@ apiRouter.get("/gmail/status", async (req, res) => {
     SELECT started_at, completed_at, status, scanned_messages, matched_messages, inserted_events, error_message
     FROM gmail_sync_runs WHERE user_id = ? ORDER BY id DESC LIMIT 1
   `, [userId])[0] ?? null;
-  res.json({ ...connection, lastSync });
+  res.json({ ...connection, lastSync, automaticEveryMinutes: Number(process.env.GMAIL_SYNC_INTERVAL_MINUTES || 30) });
 });
 
 apiRouter.post("/gmail/sync", async (req, res) => {
   const db = await CareerDatabase.open();
   const userId = currentUserId(req);
   try {
-    const result = await syncRecruiterReplies(db, userId);
-    res.json({ ok: true, ...result, pipeline: getRecruiterPipelineMetrics(db, userId) });
+    const result = await syncCareerGmail(db, userId);
+    res.json({ ok: true, ...result });
   } catch (error) {
     res.status(502).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
   }
@@ -1262,7 +1263,7 @@ apiRouter.get("/applications", async (req, res) => {
       (SELECT e.action_url FROM recruiter_email_events e WHERE e.application_id = a.id ORDER BY datetime(e.received_at) DESC, e.id DESC LIMIT 1) as latest_email_url
     FROM applications a
     LEFT JOIN jobs j ON j.id = a.job_id
-    WHERE a.user_id = ? AND ${ACTUAL_APPLICATION_SQL}
+    WHERE a.user_id = ?
     ORDER BY a.id DESC
     LIMIT 300
   `, [userId]);
@@ -1549,23 +1550,14 @@ apiRouter.get("/actions", async (req, res) => {
     ORDER BY a.updated_at DESC, a.id DESC
     LIMIT 300
   `, [userId]);
-  const availableJobs = db.query<Record<string, unknown>>(`
-    SELECT j.id, j.title, j.company, j.source, j.url, j.fit_score
-    FROM jobs j
-    LEFT JOIN applications a ON a.job_id = j.id AND a.user_id = ?
-    WHERE j.user_id = ? AND a.id IS NULL
-    ORDER BY j.fit_score DESC, j.id DESC
-    LIMIT 12
-  `, [userId, userId]);
-  const actions = [
-    ...applications.flatMap((row) => {
-      const id = Number(row.id);
-      const sent = Number(row.sent_by_agent ?? 0) === 1 || String(row.application_status ?? "") === "Candidatura enviada";
-      const approved = String(row.approval_status ?? "") === "aprovado_pelo_usuario";
-      const title = `${String(row.title ?? "Vaga")} · ${String(row.company ?? "Empresa")}`;
-      if (sent) {
-        if (String(row.availability_status ?? "") === "fechada") {
-          return [{
+  const actions = applications.flatMap((row) => {
+    const id = Number(row.id);
+    const sent = Number(row.sent_by_agent ?? 0) === 1 || String(row.application_status ?? "") === "Candidatura enviada";
+    const approved = String(row.approval_status ?? "") === "aprovado_pelo_usuario";
+    const title = `${String(row.title ?? "Vaga")} · ${String(row.company ?? "Empresa")}`;
+    if (sent) {
+      if (String(row.availability_status ?? "") === "fechada") {
+        return [{
             type: "candidatada",
             label: "Vaga fechada",
             priority: "media",
@@ -1575,13 +1567,13 @@ apiRouter.get("/actions", async (req, res) => {
             message: "Você já se candidatou, mas a vaga parece fechada ou indisponível.",
             nextStep: "O aviso fica visível por cerca de 15 dias. Acompanhe retorno ou arquive mentalmente como encerrada.",
             url: row.url
-          }];
-        }
-        return [];
+        }];
       }
-      if (!approved) return [];
-      const channel = channelForApplication(row);
-      return [{
+      return [];
+    }
+    if (!approved) return [];
+    const channel = channelForApplication(row);
+    return [{
         type: channel.id === "ia" ? "ia" : channel.id === "manual" ? "manual" : channel.id,
         label: channel.label,
         priority: channel.priority,
@@ -1590,24 +1582,13 @@ apiRouter.get("/actions", async (req, res) => {
         title,
         message: String(row.application_status ?? "Aprovada para candidatura."),
         nextStep: channel.id === "ia"
-          ? "Clique em Candidatar com IA na aba Aprovadas para preparar campos, currículo e respostas."
+          ? "Clique em Candidatar com IA na aba Candidaturas para preparar campos, currículo e respostas."
           : channel.id === "precisa_link"
             ? "Abra a fonte, encontre a vaga individual e importe o link real."
             : "Abra o canal indicado, revise dados e registre quando enviar.",
         url: row.url
-      }];
-    }),
-    ...availableJobs.map((row) => ({
-      type: "vaga",
-      label: "Aprovar vaga",
-      priority: "baixa",
-      jobId: Number(row.id),
-      title: `${String(row.title ?? "Vaga")} · ${String(row.company ?? "Empresa")}`,
-      message: `Nota ${String(row.fit_score ?? "-")} encontrada em ${String(row.source ?? "fonte")}.`,
-      nextStep: "Abra Vagas, selecione e aprove se fizer sentido.",
-      url: row.url
-    }))
-  ];
+    }];
+  });
 
   res.json({ ok: true, actions });
 });

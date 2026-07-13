@@ -1,23 +1,21 @@
+# Demonstração gratuita. O Render apaga SQLite e currículos quando o serviço
+# gratuito dorme, reinicia ou recebe um novo deploy. Não use para dados reais.
 services:
   - type: web
-    name: career-hunter-agent
+    name: apice-carreira-demo
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
     autoDeploy: true
-    disk:
-      name: career-hunter-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        value: file:/var/data/jobs.sqlite
+        value: file:/tmp/jobs.sqlite
       - key: STORAGE_ROOT
-        value: /var/data
+        value: /tmp/apice-storage
       - key: ALLOW_PUBLIC_REGISTRATION
         value: "false"
       - key: GMAIL_SYNC_INTERVAL_MINUTES
@@ -26,21 +24,11 @@ services:
         value: "1"
       - key: OPENAI_MODEL
         value: gpt-4o-mini
-      - key: GEMINI_MODEL
-        value: gemini-1.5-flash
       - key: OPENAI_API_KEY
-        sync: false
-      - key: GEMINI_API_KEY
-        sync: false
-      - key: GOOGLE_SEARCH_API_KEY
-        sync: false
-      - key: GOOGLE_SEARCH_ENGINE_ID
         sync: false
       - key: GOOGLE_CLIENT_ID
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
       - key: GMAIL_REFRESH_TOKEN
-        sync: false
-      - key: ACCOUNT_VAULT_KEY
         sync: false

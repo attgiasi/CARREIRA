@@ -23,6 +23,7 @@ export interface AgentSettings {
     email: string;
     phone: string;
     linkedin: string;
+    maritalStatus?: string;
     summary: string;
     education: { highestLevel: string; degrees: string[] };
     driverLicense: { hasLicense: boolean; categories: string[]; hasOwnVehicle: boolean };

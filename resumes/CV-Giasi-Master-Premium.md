@@ -1,12 +1,12 @@
 # Giasi Mandela Silva
 
-Curitiba/PR | att.giasi@gmail.com | Telefone disponível no perfil privado de candidatura
+Curitiba/PR | +55 41 92000-1904 | att.giasi@gmail.com | linkedin.com/in/giasimandela
 
-## Bartender Sênior | Head Bartender | Gestão de Bar | Experiência do Cliente Premium
+## Head Bartender | Chefe de Bar | Gestão e Consultoria de Bares, Restaurantes e A&B
 
-Profissional de hospitalidade e alimentos e bebidas com mais de 12 anos de experiência em bares, restaurantes, hotelaria e eventos. Reúne domínio de coquetelaria clássica e autoral, atendimento de alto padrão, liderança de operação, treinamento de equipes, padronização de serviço, organização de estoque e experiência do cliente.
+Profissional de hospitalidade e alimentos e bebidas com mais de 10 anos de experiência em bares, restaurantes, hotelaria e eventos. Reúne domínio de coquetelaria clássica e autoral, atendimento de alto padrão, liderança de operação, treinamento de equipes, padronização de serviço, organização de estoque e experiência do cliente.
 
-Tem perfil presente, comunicativo e orientado à qualidade. Atua bem em operações de alto fluxo e alta exigência, mantendo organização, agilidade, cordialidade e consistência. Está preparado para contribuir como bartender sênior, head bartender, chefe ou supervisor de bar, consultor de A&B, instrutor de treinamento e profissional de guest experience em hospitalidade.
+Tem perfil presente, comunicativo e orientado à qualidade. Atua bem em operações de alto fluxo e alta exigência, mantendo organização, agilidade, cordialidade e consistência. Está preparado para contribuir como Head Bartender, Chefe de Bar, gestor ou consultor de bares e restaurantes, instrutor de treinamento e profissional de guest experience em hospitalidade.
 
 ## Competências centrais
 
@@ -19,11 +19,11 @@ Tem perfil presente, comunicativo e orientado à qualidade. Atua bem em operaç�
 - Desenvolvimento de carta de bebidas e atendimento consultivo.
 - Rotina de eventos, alta demanda, trabalho noturno e finais de semana.
 - Relacionamento com salão, cozinha, fornecedores, liderança e clientes.
-- Administração, organização de processos e visão prática de negócio.
+- Consultoria operacional para bares e restaurantes, organização de processos e visão prática de negócio.
 
 ## Experiência profissional
 
-### Grand Mercure Curitiba Rayon / RB Hotelaria LTDA | Bartender Jr.
+### Grand Mercure Curitiba Rayon | Bartender Jr.
 
 **Curitiba/PR | 06/05/2025 a 04/12/2025**
 
@@ -32,7 +32,7 @@ Tem perfil presente, comunicativo e orientado à qualidade. Atua bem em operaç�
 - Organização de praça, abertura e fechamento, reposição, conferência e controle de materiais.
 - Integração com salão e cozinha para manter fluidez, qualidade e boa experiência do hóspede.
 
-### ACO Bar e Restaurante LTDA | Barman
+### ACO Bar e Restaurante | Barman
 
 **Curitiba/PR | 28/02/2025 a 10/03/2025**
 
@@ -40,7 +40,7 @@ Tem perfil presente, comunicativo e orientado à qualidade. Atua bem em operaç�
 - Atendimento ao público com rapidez, cordialidade e atenção ao padrão da casa.
 - Adaptação imediata à equipe e à rotina em contrato de curta duração.
 
-### Kirin Company LTDA | Bartender
+### Kirin Company | Bartender
 
 **Curitiba/PR | 13/11/2024 a 30/01/2025**
 
@@ -48,7 +48,7 @@ Tem perfil presente, comunicativo e orientado à qualidade. Atua bem em operaç�
 - Apoio à padronização do serviço, controle de insumos e consistência das entregas.
 - Orientação prática da rotina de bar e contribuição consultiva para o fluxo da operação.
 
-### Services Tech Experience Inovação e Tecnologia em Relacionamento LTDA | Agente de Teleatendimento
+### Concentrix | Agente de Teleatendimento
 
 **Curitiba/PR | 07/12/2023 a 12/11/2024**
 
@@ -65,24 +65,23 @@ Tem perfil presente, comunicativo e orientado à qualidade. Atua bem em operaç�
 - Preparo e apresentação de coquetéis, produção de insumos e apoio à carta de bebidas.
 - Controle de estoque, reposição, qualidade e integração com a operação do gastrobar.
 
-### Normandia Serviços de Gastronomia LTDA / Ile de France | Barman
+### Ile de France | Head Bartender
 
 **Curitiba/PR | 02/05/2022 a 22/07/2023**
 
-- Atuação em restaurante de alto padrão, com atendimento personalizado e hospitalidade.
-- Preparo de bebidas e insumos, controle de estoque e consistência operacional.
-- Participação no desenvolvimento e execução da carta de coquetéis.
-- Serviço atento, discreto e orientado à experiência sofisticada do cliente.
+- Responsável pela operação do bar em restaurante de alto padrão, com atendimento personalizado e hospitalidade.
+- Padronização de coquetéis e insumos, organização de praça, estoque e reposição.
+- Integração com salão e cozinha, com serviço atento e orientado à experiência do cliente.
 
-### L. Borcath Restaurante LTDA | Barman I
+### Restaurante Hai-Yo | Head Bartender
 
 **Curitiba/PR | 14/01/2022 a 16/03/2022**
 
-- Preparo de bebidas, organização da estação e suporte à operação diária.
-- Mise en place, reposição, limpeza e controle básico de materiais.
-- Atendimento direto e apoio à equipe de salão em ambiente de alta demanda.
+- Responsável pela operação do bar, mise en place, preparo e padronização de bebidas e insumos.
+- Organização de praça, reposição, controle de materiais e integração com o salão.
+- Atendimento ao público em ambiente de alta demanda.
 
-### Hai-Yo Restaurante | Head Bartender
+### Restaurante Hai-Yo | Head Bartender
 
 **Curitiba/PR | 11/2018 a 09/2019**
 

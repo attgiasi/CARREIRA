@@ -2,16 +2,22 @@ const app = document.querySelector("#app");
 const header = document.querySelector("header");
 let currentTab = "dashboard";
 let aiApplyPrefill = null;
-let aiApplyReturnTab = "approved";
+let aiApplyReturnTab = "applications";
 let currentUser = null;
 let registrationOpen = true;
 let startupAiApplyPrefill = readAiApplyPrefillFromQuery();
 
+if (localStorage.getItem("careerHunter:directFlowVersion") !== "1") {
+  localStorage.removeItem("careerHunter:approved:filters");
+  localStorage.removeItem("careerHunter:applications:filters");
+  localStorage.setItem("careerHunter:directFlowVersion", "1");
+}
+
 const tabs = [
   ["dashboard", "Painel"],
   ["jobs", "Vagas"],
-  ["approved", "Aprovadas"],
   ["applications", "Candidaturas"],
+  ["actions", "Próximas ações"],
   ["sources", "Fontes"],
   ["profile", "Meu currículo"]
 ];
@@ -407,7 +413,7 @@ function applicationState(row) {
     return { label: "Rejeitada", tone: "muted", detail: "Fora da fila ativa" };
   }
   if (row.approval_status === "aprovado_pelo_usuario") {
-    return { label: "Aprovada", tone: "ready", detail: "Pode iniciar candidatura" };
+    return { label: "Pronta", tone: "ready", detail: "Pode iniciar candidatura" };
   }
   if (row.application_id || row.id) {
     return { label: "Preparada", tone: "info", detail: "Aguardando aprovação" };
@@ -485,7 +491,7 @@ function sourceName(sourceOrRow) {
     lever: "Lever",
     rss: "RSS",
     whatsapp: "WhatsApp",
-    gmail: "Gmail"
+    gmail: "Gmail / newsletters"
   };
   return names[source] || source.replace(/[-_]/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) || "Fonte";
 }
@@ -764,7 +770,7 @@ function realLinkImporter(idPrefix, onImported) {
 function jobNextStep(row) {
   if (assistedSources.has(row.source)) return "Fonte de busca: abra, escolha uma vaga individual e importe o link real.";
   if (!hasDirectJobUrl(row)) return "Sem canal de candidatura: confirme e-mail, formulário ou página oficial antes de enviar dados.";
-  return "Vaga com fonte direta: selecione e aprove a oportunidade.";
+  return "Vaga com fonte direta: selecione para candidatar com IA ou preparar para fazer no site.";
 }
 
 function jobCard(row) {
@@ -794,7 +800,7 @@ function jobCard(row) {
     </div>
     <div class="card-actions">
       ${sourceActionLink(row)}
-      ${aiAccelerateButton(row)}
+      ${hasDirectJobUrl(row) ? `<button class="primary" data-job-ai="${row.id}" data-job-url="${escapeHtml(row.url)}" data-job-title="${escapeHtml(row.title || "")}" data-job-company="${escapeHtml(row.company || "")}">Candidatar com IA</button>` : ""}
       <button data-detail="${row.id}">Detalhes</button>
     </div>
   </article>`;
@@ -822,7 +828,7 @@ function applicationCard(row, context = "approved") {
       ["Local", escapeHtml(row.location || "A confirmar")],
       ["Modelo", escapeHtml(row.work_model || "A confirmar")],
       ["Chance", `${escapeHtml(row.hire_chance_score ?? "-")}/100`],
-      [context === "sent" ? (row.approval_status === "confirmada_por_email" ? "Confirmado no Gmail" : "Candidatado") : "Aprovado", escapeHtml(formatDate(context === "sent" ? row.applied_at : row.updated_at))],
+      [context === "sent" ? (row.approval_status === "confirmada_por_email" ? "Confirmado no Gmail" : "Candidatado") : "Preparada", escapeHtml(formatDate(context === "sent" ? row.applied_at : row.updated_at))],
       ["Etapa", escapeHtml(state.label)],
       ["Último retorno", row.last_recruiter_email_at ? escapeHtml(formatDate(row.last_recruiter_email_at)) : "Sem retorno"]
     ])}
@@ -860,7 +866,7 @@ function actionCard(action) {
     <div class="card-actions">
       ${action.url && !isGoogleSearchUrl(action.url) ? `<a class="action" href="${escapeHtml(action.url)}" target="_blank" rel="noreferrer">Abrir fonte</a>` : ""}
       ${action.url && !isGoogleSearchUrl(action.url) ? `<button class="primary" data-accelerate-url="${escapeHtml(action.url)}" data-accelerate-title="${escapeHtml(action.title || "")}" data-accelerate-company="" data-accelerate-application-id="${escapeHtml(action.applicationId || "")}">Abrir na IA</button>` : ""}
-      ${action.applicationId ? `<button data-tab="approved">Ver aprovadas</button>` : ""}
+      ${action.applicationId ? `<button data-tab="applications">Ver candidatura</button>` : ""}
       ${action.jobId ? `<button data-detail="${action.jobId}">Detalhes</button>` : ""}
     </div>
   </article>`;
@@ -874,12 +880,12 @@ function jobGuidancePanel(rows) {
     <div>
       <span class="eyebrow">Orientação</span>
       <h3>O que fazer nas vagas</h3>
-      <p>Primeiro filtre por vagas com fonte direta. Quando a vaga tiver link real, selecione e clique em Aprovar selecionadas. Se a fonte for uma página de busca, abra a fonte, entre na vaga individual e cole o link oficial no campo de importação.</p>
+      <p>Primeiro filtre por vagas com fonte direta. Selecione as oportunidades e escolha Candidatar com IA ou Preparar para eu fazer. Se a fonte for uma busca, abra a vaga individual e importe o link oficial.</p>
     </div>
     <div class="guidance-steps">
       <div><strong>1. Buscar vagas</strong><small>Use o botão Buscar vagas para renovar o radar sem repetir as já movidas.</small></div>
       <div><strong>2. Validar fonte</strong><small>Priorize vagas com formulário, e-mail de RH ou página oficial da empresa.</small></div>
-      <div><strong>3. Aprovar a vaga</strong><small>Depois de validar, a vaga sai daqui e entra em Aprovadas.</small></div>
+      <div><strong>3. Candidatar</strong><small>A vaga sai desta fila e entra em Candidaturas, com o próximo passo já indicado.</small></div>
     </div>
     <div class="guidance-stats">
       <span class="state-chip success">${realLinks} com link direto</span>
@@ -938,7 +944,7 @@ async function dashboard() {
     </div>
     <div class="executive-actions">
       <span class="connection-pill ${gmail.connected ? "online" : "offline"}"><i></i> Gmail ${gmail.connected ? "conectado" : "desconectado"}</span>
-      <button id="syncGmail">Atualizar retornos</button>
+      <button id="syncGmail">Atualizar Gmail agora</button>
       <button id="scanNow" class="primary">Buscar vagas</button>
     </div>
   </div>
@@ -963,10 +969,10 @@ async function dashboard() {
       </div>
     </section>
     <section class="gmail-section">
-      <div class="section-head"><div><span class="eyebrow">Gmail</span><h3>Leitura de recrutadores</h3></div><span class="state-chip ${gmail.connected ? "success" : "warning"}">${gmail.connected ? "Ativo" : "Atenção"}</span></div>
+      <div class="section-head"><div><span class="eyebrow">Gmail</span><h3>Retornos, alertas e newsletters</h3></div><span class="state-chip ${gmail.connected ? "success" : "warning"}">${gmail.connected ? "Ativo" : "Atenção"}</span></div>
       <div class="connection-detail">
         <strong>${escapeHtml(gmail.email || "Conta não conectada")}</strong>
-        <small>${gmail.lastSync?.completed_at ? `Última leitura: ${formatDate(gmail.lastSync.completed_at)}` : "Nenhuma leitura registrada"}</small>
+        <small>${gmail.lastSync?.completed_at ? `Última leitura: ${formatDate(gmail.lastSync.completed_at)}` : "Nenhuma leitura registrada"} · atualização automática a cada ${gmail.automaticEveryMinutes || 30} min</small>
       </div>
       <div class="mini-stats">
         <div><span>Mensagens verificadas</span><strong>${gmail.lastSync?.scanned_messages || 0}</strong></div>
@@ -1022,12 +1028,12 @@ async function dashboard() {
     button.textContent = "Lendo Gmail...";
     try {
       const result = await json("/api/gmail/sync", { method: "POST" });
-      toast(`${result.matched} retorno(s) vinculados às candidaturas.`, "success");
+      toast(`${result.matched} retorno(s) vinculados e ${result.jobsImported || 0} nova(s) vaga(s) importada(s) do Gmail.`, "success");
       await dashboard();
     } catch (error) {
       toast(error.message, "error");
       button.disabled = false;
-      button.textContent = "Atualizar retornos";
+      button.textContent = "Atualizar Gmail agora";
     }
   };
 }
@@ -1107,18 +1113,19 @@ async function jobs(initialMessage = "") {
 
   app.innerHTML = `<section class="page-panel">
     <div class="page-title-row">
-      <div><span class="eyebrow">Vagas</span><h2>Achou as vagas</h2><p>Selecione as oportunidades que fazem sentido e aprove. Elas saem daqui e entram em Aprovadas.</p></div>
+      <div><span class="eyebrow">Vagas</span><h2>Oportunidades encontradas</h2><p>Selecione as vagas e siga direto para a candidatura. Não existe mais uma etapa separada de aprovação.</p></div>
       <div class="toolbar-actions">
         <button id="scanJobs">Buscar vagas</button>
         <button id="toggleJobFilters">Filtros</button>
         <button id="selectAllJobs">Selecionar todas</button>
         <button id="clearJobs">Limpar</button>
-        <button id="approveSelectedJobs" class="primary">Aprovar selecionadas</button>
+        <button id="prepareSelectedJobs">Preparar para eu fazer</button>
+        <button id="applySelectedJobs" class="primary">Candidatar com IA</button>
       </div>
     </div>
     <div id="jobActionResult" class="note ${initialMessage ? "" : "hidden"}">${initialMessage}</div>
     ${jobGuidancePanel(rows)}
-    ${realLinkImporter("jobs", () => jobs("<strong>Link real importado.</strong><p>A vaga entrou na fila como fonte direta. Selecione e aprove a oportunidade.</p>"))}
+    ${realLinkImporter("jobs", () => jobs("<strong>Link real importado.</strong><p>A vaga entrou na fila. Agora você pode candidatar com IA ou preparar para concluir no site.</p>"))}
     <div id="jobFilters" class="filter-studio">
       <div class="filter-grid">
         <label>Buscar<input id="jobSearch" value="${escapeHtml(filters.q)}" placeholder="cargo, empresa, cidade, fonte"></label>
@@ -1170,7 +1177,7 @@ async function jobs(initialMessage = "") {
   };
 
   document.querySelector("#scanJobs").onclick = () => runScanAndRefresh("jobs");
-  bindRealLinkImporter("jobs", () => jobs("<strong>Link real importado.</strong><p>A vaga entrou na fila como fonte direta. Selecione e aprove a oportunidade.</p>"));
+  bindRealLinkImporter("jobs", () => jobs("<strong>Link real importado.</strong><p>A vaga entrou na fila. Agora você pode candidatar com IA ou preparar para concluir no site.</p>"));
   document.querySelector("#toggleJobFilters").onclick = () => document.querySelector("#jobFilters").classList.toggle("collapsed");
   document.querySelector("#selectAllJobs").onclick = () => document.querySelectorAll(".job-check").forEach((input) => input.checked = true);
   document.querySelector("#clearJobs").onclick = () => document.querySelectorAll(".job-check").forEach((input) => input.checked = false);
@@ -1179,15 +1186,22 @@ async function jobs(initialMessage = "") {
     jobs(initialMessage);
   };
   document.querySelectorAll("#jobFilters input, #jobFilters select").forEach((element) => element.addEventListener("input", applyFilters));
-  document.querySelector("#approveSelectedJobs").onclick = async () => {
-    const ids = [...document.querySelectorAll(".job-check:checked")].map((input) => Number(input.value));
-    if (!ids.length) return showInlineResult("#jobActionResult", "Selecione pelo menos uma vaga para aprovar.");
+  const selectedJobIds = () => [...document.querySelectorAll(".job-check:checked")].map((input) => Number(input.value));
+  const moveSelectedJobs = async (withAi) => {
+    const ids = selectedJobIds();
+    if (!ids.length) return showInlineResult("#jobActionResult", "Selecione pelo menos uma vaga para continuar.");
     const data = await json("/api/jobs/approve-selected", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
     const skipped = (data.skipped || []).map((item) => `<li>#${item.id}: ${escapeHtml(item.reason)}</li>`).join("");
-    const message = `<strong>${data.approved} vaga(s) aprovada(s).</strong>${skipped ? `<ul>${skipped}</ul>` : ""}<p>Elas foram para a aba Aprovadas.</p>`;
-    toast("Vagas aprovadas e enviadas para a etapa de candidatura.", "success");
+    let message = `<strong>${data.approved} vaga(s) preparada(s).</strong>${skipped ? `<ul>${skipped}</ul>` : ""}<p>Veja os próximos passos em Candidaturas.</p>`;
+    if (withAi && data.applicationIds?.length) {
+      const automation = await json("/api/applications/ai-apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: data.applicationIds }) });
+      message += renderAutomationResult(automation);
+    }
+    toast(withAi ? "A IA preparou as candidaturas selecionadas." : "Vagas movidas para Candidaturas.", "success");
     await jobs(message);
   };
+  document.querySelector("#prepareSelectedJobs").onclick = () => moveSelectedJobs(false);
+  document.querySelector("#applySelectedJobs").onclick = () => moveSelectedJobs(true);
   applyFilters();
 }
 
@@ -1439,6 +1453,10 @@ async function applications(initialMessage = "") {
   const workModels = uniqueValues(rows, "work_model");
   const stages = {
     all: "Todas",
+    pending: "Para candidatar",
+    ai: "Candidatura por IA",
+    manual: "Eu concluo",
+    sent: "Já candidatadas",
     selected: "Selecionado",
     rejected: "Não selecionado",
     waiting: "Sem retorno",
@@ -1447,12 +1465,14 @@ async function applications(initialMessage = "") {
 
   app.innerHTML = `<section class="page-panel">
     <div class="page-title-row">
-      <div><span class="eyebrow">Candidaturas</span><h2>Acompanhamento de processos</h2><p>Veja apenas candidaturas realmente enviadas, os retornos do Gmail, a fase atual e a próxima ação de cada vaga.</p></div>
+      <div><span class="eyebrow">Candidaturas</span><h2>Preparar, enviar e acompanhar</h2><p>Uma única área mostra o que ainda precisa ser enviado, o que a IA pode preparar e todas as candidaturas já realizadas.</p></div>
       <div class="toolbar-actions">
         <button id="toggleApplicationFilters">Filtros</button>
         <button id="selectAllApplications">Selecionar todas</button>
         <button id="clearApplications">Limpar</button>
-        <button id="checkAvailability" class="primary">Verificar disponibilidade</button>
+        <button id="markApplicationsSent">Marcar enviada</button>
+        <button id="aiApplyApplications" class="primary">Candidatar com IA</button>
+        <button id="checkAvailability">Verificar disponibilidade</button>
       </div>
     </div>
     <div id="applicationActionResult" class="note ${initialMessage ? "" : "hidden"}">${initialMessage}</div>
@@ -1494,7 +1514,12 @@ async function applications(initialMessage = "") {
       if (Number(row.fit_score || 0) < active.minScore) return false;
       const outcome = String(row.pipeline_outcome || "sem_retorno");
       const pipelineStage = Number(row.pipeline_stage || 1);
-      if (!sent) return false;
+      const channel = applicationChannel(row).id;
+      if (active.stage === "pending" && sent) return false;
+      if (active.stage === "ai" && (sent || !["ia", "dados"].includes(channel))) return false;
+      if (active.stage === "manual" && (sent || ["ia", "dados"].includes(channel))) return false;
+      if (active.stage === "sent" && !sent) return false;
+      if (["selected", "rejected", "waiting", "action"].includes(active.stage) && !sent) return false;
       if (active.stage === "selected" && !(pipelineStage >= 2 && outcome !== "negativa")) return false;
       if (active.stage === "rejected" && outcome !== "negativa") return false;
       if (active.stage === "waiting" && !(pipelineStage < 2 && outcome !== "negativa")) return false;
@@ -1502,18 +1527,34 @@ async function applications(initialMessage = "") {
       return true;
     });
     const counters = rows.reduce((acc, row) => {
+      const sent = isSentApplication(row);
       const outcome = String(row.pipeline_outcome || "sem_retorno");
       const pipelineStage = Number(row.pipeline_stage || 1);
+      const channel = applicationChannel(row).id;
+      if (!sent) {
+        acc.pending = (acc.pending || 0) + 1;
+        acc[["ia", "dados"].includes(channel) ? "ai" : "manual"] = (acc[["ia", "dados"].includes(channel) ? "ai" : "manual"] || 0) + 1;
+        return acc;
+      }
+      acc.sent = (acc.sent || 0) + 1;
       const key = outcome === "negativa" ? "rejected" : pipelineStage >= 2 ? "selected" : "waiting";
       acc[key] = (acc[key] || 0) + 1;
       if (String(row.next_action || "").trim()) acc.action = (acc.action || 0) + 1;
       return acc;
     }, {});
-    const empty = `<div class="empty-state"><h3>Nenhuma candidatura nesta etapa</h3><p>Aprove vagas ou registre candidaturas enviadas para acompanhar aqui.</p><button data-tab="approved" class="primary">Ver aprovadas</button></div>`;
-    mount.innerHTML = `<div class="table-meta"><strong>${visibleRows.length}</strong><span>candidatura(s) exibida(s)</span><span>${groupRowsBySource(visibleRows).length} fonte(s)</span><span>Selecionadas: ${counters.selected || 0}</span><span>Não selecionadas: ${counters.rejected || 0}</span><span>Sem retorno: ${counters.waiting || 0}</span><span>Ações: ${counters.action || 0}</span></div>${visibleRows.length ? renderGroupedCards(visibleRows, (row) => applicationCard(row, "sent"), "candidatura") : empty}`;
+    const empty = `<div class="empty-state"><h3>Nenhuma candidatura nesta etapa</h3><p>Volte a Vagas, selecione oportunidades e escolha como deseja se candidatar.</p><button data-tab="jobs" class="primary">Ver vagas</button></div>`;
+    mount.innerHTML = `<div class="table-meta"><strong>${visibleRows.length}</strong><span>exibida(s)</span><span>${counters.pending || 0} para candidatar</span><span>${counters.sent || 0} já enviadas</span><span>${counters.selected || 0} selecionadas</span><span>${counters.rejected || 0} recusadas</span><span>${counters.action || 0} ações</span></div>${visibleRows.length ? renderGroupedCards(visibleRows, (row) => applicationCard(row, isSentApplication(row) ? "sent" : "approved"), "candidatura") : empty}`;
   };
 
   const selectedIds = () => [...document.querySelectorAll(".application-check:checked")].map((input) => Number(input.value));
+  const postApplications = async (url, successBuilder) => {
+    const ids = selectedIds();
+    if (!ids.length) return showInlineResult("#applicationActionResult", "Selecione pelo menos uma candidatura para continuar.");
+    const data = await json(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+    const message = successBuilder(data);
+    toast("Ação registrada.", "success");
+    await applications(message);
+  };
   document.querySelector("#toggleApplicationFilters").onclick = () => document.querySelector("#applicationFilters").classList.toggle("collapsed");
   document.querySelector("#selectAllApplications").onclick = () => document.querySelectorAll(".application-check").forEach((input) => input.checked = true);
   document.querySelector("#clearApplications").onclick = () => document.querySelectorAll(".application-check").forEach((input) => input.checked = false);
@@ -1527,6 +1568,8 @@ async function applications(initialMessage = "") {
     button.classList.add("active");
     applyFilters();
   }));
+  document.querySelector("#aiApplyApplications").onclick = () => postApplications("/api/applications/ai-apply", renderAutomationResult);
+  document.querySelector("#markApplicationsSent").onclick = () => postApplications("/api/applications/mark-sent", (data) => `<strong>${data.sent} candidatura(s) marcada(s) como enviadas.</strong><p>O acompanhamento e os retornos do Gmail já aparecem nesta mesma página.</p>`);
   document.querySelector("#checkAvailability").onclick = async () => {
     const ids = selectedIds();
     const data = await json("/api/applications/check-availability", {
@@ -1543,13 +1586,21 @@ async function applications(initialMessage = "") {
 
 async function actionsPage() {
   const data = await json("/api/actions");
+  const filters = getSavedFilters("actions", { q: "", type: "all" });
+  const types = [...new Set(data.actions.map((item) => item.label).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
   app.innerHTML = `<section class="page-panel">
     <div class="page-title-row">
-      <div><span class="eyebrow">Ações</span><h2>O que preciso fazer agora</h2><p>Cada card mostra uma pendência objetiva: link real, dados faltantes, candidatura manual, e-mail, WhatsApp ou acompanhamento.</p></div>
+      <div><span class="eyebrow">Próximas ações</span><h2>O que preciso fazer agora</h2><p>Cada card mostra uma pendência objetiva: dados faltantes, candidatura manual, e-mail, WhatsApp ou acompanhamento.</p></div>
       <div class="toolbar-actions">
         <button data-tab="jobs">Vagas</button>
-        <button data-tab="approved" class="primary">Aprovadas</button>
-        <button data-tab="applications">Candidaturas</button>
+        <button data-tab="applications" class="primary">Candidaturas</button>
+      </div>
+    </div>
+    <div class="filter-studio">
+      <div class="filter-grid">
+        <label>Buscar<input id="actionSearch" value="${escapeHtml(filters.q)}" placeholder="vaga, empresa ou próxima etapa"></label>
+        <label>Tipo<select id="actionType">${optionList(types, filters.type, "Todos")}</select></label>
+        <button id="clearActionFilters">Limpar filtros</button>
       </div>
     </div>
     <div class="kpi-grid compact">
@@ -1558,8 +1609,27 @@ async function actionsPage() {
       ${metricCard("Candidatura por IA", data.actions.filter((item) => item.type === "ia").length, "podem ser preparadas", "success")}
       ${metricCard("Manual", data.actions.filter((item) => item.type === "manual").length, "você conclui no site", "gold")}
     </div>
-    <div class="action-grid">${data.actions.length ? data.actions.map(actionCard).join("") : `<div class="empty-state"><h3>Nenhuma ação pendente</h3><p>Busque vagas, aprove as melhores e acompanhe os próximos passos aqui.</p><button data-tab="jobs" class="primary">Ver vagas</button></div>`}</div>
+    <div id="actionMount"></div>
   </section>`;
+
+  const renderActions = () => {
+    const active = { q: document.querySelector("#actionSearch").value.trim(), type: document.querySelector("#actionType").value };
+    saveFilters("actions", active);
+    const visible = data.actions.filter((item) => {
+      const text = [item.title, item.message, item.nextStep, item.label].join(" ").toLowerCase();
+      return (!active.q || text.includes(active.q.toLowerCase())) && (active.type === "all" || item.label === active.type);
+    });
+    document.querySelector("#actionMount").innerHTML = visible.length
+      ? `<div class="table-meta"><strong>${visible.length}</strong><span>ação(ões) exibida(s)</span></div><div class="action-grid">${visible.map(actionCard).join("")}</div>`
+      : `<div class="empty-state"><h3>Nenhuma ação encontrada</h3><p>Ajuste os filtros ou busque novas vagas.</p><button data-tab="jobs" class="primary">Ver vagas</button></div>`;
+  };
+  document.querySelector("#actionSearch").addEventListener("input", renderActions);
+  document.querySelector("#actionType").addEventListener("change", renderActions);
+  document.querySelector("#clearActionFilters").onclick = () => {
+    localStorage.removeItem(filterKey("actions"));
+    actionsPage();
+  };
+  renderActions();
 }
 
 function accountPresets() {
@@ -1671,10 +1741,10 @@ async function aiApplyPage(initialMessage = "", prefill = null) {
   const bookmarklet = buildAiApplyBookmarklet();
   app.innerHTML = `<section class="page-panel">
     <div class="page-title-row">
-      <div><span class="eyebrow">IA Candidatura</span><h2>Colar link e acelerar candidatura</h2><p>Cole o link real da vaga. A IA importa, aprova, prepara seus dados e mostra exatamente o que preencher.</p></div>
+      <div><span class="eyebrow">IA Candidatura</span><h2>Colar link e acelerar candidatura</h2><p>Cole o link real da vaga. A IA importa, prepara seus dados e mostra exatamente o que preencher.</p></div>
       <div class="toolbar-actions">
         <button id="backFromAiApply">Voltar</button>
-        <button data-tab="approved">Aprovadas</button>
+        <button data-tab="applications">Candidaturas</button>
         <button data-tab="applications">Candidaturas</button>
       </div>
     </div>
@@ -1817,7 +1887,7 @@ async function aiApplyPage(initialMessage = "", prefill = null) {
   };
   document.querySelector("#loadAiFrame").onclick = loadFrame;
   document.querySelector("#vaiIa").onclick = prepareWithAi;
-  document.querySelector("#backFromAiApply").onclick = () => load(aiApplyReturnTab || "approved");
+  document.querySelector("#backFromAiApply").onclick = () => load(aiApplyReturnTab || "applications");
   if (initial?.url && initial.autoLoad) {
     loadFrame();
     showInlineResult("#aiApplyResult", "<strong>Link carregado.</strong><p>Revise a página aberta e clique em VAI IA para preparar a candidatura com seu currículo.</p>");
@@ -1838,7 +1908,7 @@ async function profilesPage() {
       <p>Use perfis distintos para cada pessoa. A memória de respostas fica vinculada ao perfil ativo.</p>
     </div>
     <div class="hero-actions">
-      <button data-tab="approved" class="primary">Usar nas aprovadas</button>
+      <button data-tab="applications" class="primary">Usar nas candidaturas</button>
       <button data-tab="profile">Configurar busca</button>
     </div>
   </div>
@@ -2084,6 +2154,7 @@ async function settings() {
           ${input("E-mail", "profile.email", data.profile.email)}
           ${input("Telefone", "profile.phone", data.profile.phone)}
           ${input("LinkedIn", "profile.linkedin", data.profile.linkedin)}
+          ${input("Estado civil", "profile.maritalStatus", data.profile.maritalStatus || "Solteiro")}
           ${input("Cidade", "profile.city", data.profile.city)}
           ${input("Estado", "profile.state", data.profile.state)}
           ${textareaField("Resumo profissional", "profile.summary", data.profile.summary)}
@@ -2214,7 +2285,6 @@ async function settings() {
           ${settingToggle("Preencher formulários", "applications.autoFillFormsWhenAllowed", getPath(data, "applications.autoFillFormsWhenAllowed"), "Monta respostas e campos para formulário oficial da vaga.")}
           ${settingToggle("Perguntar e memorizar", "applications.askAndRememberMissingFields", getPath(data, "applications.askAndRememberMissingFields"), "Quando faltar informação, pergunta uma vez e salva para futuras vagas.")}
           ${settingToggle("LinkedIn só busca", "applications.allowLinkedInSearchOnly", getPath(data, "applications.allowLinkedInSearchOnly"), "Encontra vagas no LinkedIn, mas você abre e se candidata manualmente.")}
-          ${settingToggle("Exigir aprovação", "applications.requireApprovalBeforeApply", getPath(data, "applications.requireApprovalBeforeApply"), "Mantém você no controle antes de qualquer candidatura.")}
           ${settingToggle("APIs oficiais", "applications.allowQuickApplyAPIs", getPath(data, "applications.allowQuickApplyAPIs"), "Use apenas com integração oficial/permitida pela plataforma.")}
           ${settingToggle("Autofill no navegador", "applications.allowBrowserAutofill", getPath(data, "applications.allowBrowserAutofill"), "Ajuda a preencher, mas não burla login, CAPTCHA ou regras de site.")}
         </div>
@@ -2449,11 +2519,11 @@ async function load(tab) {
   document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
   try {
     if (tab === "jobs") return jobs();
-    if (tab === "approved") return approved();
+    if (tab === "approved") return applications();
     if (tab === "informal") return informal();
     if (tab === "applications") return applications();
     if (tab === "sources") return sourcesPage();
-    if (tab === "actions") return applications();
+    if (tab === "actions") return actionsPage();
     if (tab === "aiApply") return aiApplyPage();
     if (tab === "accounts") return accountsPage();
     if (["profile", "profiles", "resume", "settings"].includes(tab)) return settings();
@@ -2488,6 +2558,7 @@ app.addEventListener("click", (event) => {
   const detail = event.target.closest("[data-detail]");
   const tab = event.target.closest("[data-tab]");
   const retry = event.target.closest("[data-retry]");
+  const jobAi = event.target.closest("[data-job-ai]");
   const aiApply = event.target.closest("[data-ai-apply]");
   const accelerate = event.target.closest("[data-accelerate-url]");
   const markSent = event.target.closest("[data-mark-sent]");
@@ -2496,6 +2567,24 @@ app.addEventListener("click", (event) => {
   const copyAutofill = event.target.closest("[data-copy-autofill]");
   if (detail) jobDetail(detail.dataset.detail, currentTab);
   if (tab) load(tab.dataset.tab);
+  if (jobAi) {
+    const jobId = Number(jobAi.dataset.jobAi);
+    json("/api/jobs/approve-selected", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [jobId] }) })
+      .then((data) => {
+        const applicationId = data.applicationIds?.[0] || "";
+        aiApplyReturnTab = "applications";
+        setAiApplyPrefill({
+          url: jobAi.dataset.jobUrl,
+          title: jobAi.dataset.jobTitle,
+          company: jobAi.dataset.jobCompany,
+          applicationId,
+          autoLoad: true,
+          autoPrepare: true
+        });
+        return load("aiApply");
+      })
+      .catch((error) => toast(escapeHtml(error.message), "error"));
+  }
   if (copyValue) {
     navigator.clipboard.writeText(copyValue.dataset.copyValue || "")
       .then(() => toast("Campo copiado.", "success"))
@@ -2507,7 +2596,7 @@ app.addEventListener("click", (event) => {
       .catch(() => toast("Não consegui copiar automaticamente.", "error"));
   }
   if (accelerate) {
-    aiApplyReturnTab = currentTab || "approved";
+    aiApplyReturnTab = currentTab || "applications";
     setAiApplyPrefill({
       url: accelerate.dataset.accelerateUrl,
       title: accelerate.dataset.accelerateTitle,
@@ -2528,7 +2617,7 @@ app.addEventListener("click", (event) => {
   if (aiApply) {
     const url = String(aiApply.dataset.applicationUrl || "").trim();
     if (url && !isGoogleSearchUrl(url)) {
-      aiApplyReturnTab = currentTab || "approved";
+      aiApplyReturnTab = currentTab || "applications";
       setAiApplyPrefill({
         url,
         title: aiApply.dataset.applicationTitle,
@@ -2543,7 +2632,7 @@ app.addEventListener("click", (event) => {
     json("/api/applications/ai-apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [Number(aiApply.dataset.aiApply)] }) })
       .then((data) => {
         toast("IA preparou a candidatura desta vaga.", "success");
-        return approved(renderAutomationResult(data));
+        return applications(renderAutomationResult(data));
       })
       .catch((error) => toast(escapeHtml(error.message), "error"));
   }
@@ -2573,7 +2662,7 @@ app.addEventListener("click", (event) => {
       body: JSON.stringify({ profileId: Number(capture.dataset.profileId), answers })
     }).then(() => {
       toast("Respostas salvas na memória do perfil.", "success");
-      return approved();
+      return applications();
     }).catch((error) => toast(escapeHtml(error.message), "error"));
   }
 });
