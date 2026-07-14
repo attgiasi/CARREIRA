@@ -405,10 +405,25 @@ function createApplicationFromDecision(
   };
 }
 
-function searchStartDate(applications: ApplicationCandidate[]): string {
-  const timestamps = applications.map((item) => String(item.applied_at ?? "")).filter(Boolean).map((value) => Date.parse(value)).filter(Number.isFinite);
-  const start = timestamps.length ? Math.min(...timestamps) - 86_400_000 : Date.now() - 365 * 86_400_000;
+function timestamp(value: string): number {
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value) ? `${value.replace(" ", "T")}Z` : value;
+  return Date.parse(normalized);
+}
+
+export function incrementalGmailStartDate(applicationDates: string[], previousCompletedAt = "", lookbackDays = 2): string {
+  const timestamps = applicationDates.map(timestamp).filter(Number.isFinite);
+  const earliestApplication = timestamps.length ? Math.min(...timestamps) - 86_400_000 : Date.now() - 365 * 86_400_000;
+  const previousSync = timestamp(previousCompletedAt);
+  const incrementalStart = Number.isFinite(previousSync) ? previousSync - Math.max(1, lookbackDays) * 86_400_000 : earliestApplication;
+  const start = Math.max(earliestApplication, incrementalStart);
   return new Date(start).toISOString().slice(0, 10).replace(/-/g, "/");
+}
+
+function searchStartDate(applications: ApplicationCandidate[], previousCompletedAt = ""): string {
+  return incrementalGmailStartDate(
+    applications.map((item) => String(item.applied_at ?? "")).filter(Boolean),
+    previousCompletedAt
+  );
 }
 
 async function listMessageIds(query: string): Promise<{ client: NonNullable<Awaited<ReturnType<typeof getGmailClient>>>; ids: string[] } | null> {
@@ -422,6 +437,39 @@ async function listMessageIds(query: string): Promise<{ client: NonNullable<Awai
     pageToken = response.data.nextPageToken ?? "";
   } while (pageToken && ids.length < 500);
   return { client, ids: ids.slice(0, 500) };
+}
+
+function unseenMessageIds(db: CareerDatabase, userId: number, ids: string[]): string[] {
+  if (!ids.length) return [];
+  const placeholders = ids.map(() => "?").join(",");
+  const eventIds = db.query<Record<string, unknown>>(
+    `SELECT gmail_message_id FROM recruiter_email_events WHERE user_id = ? AND gmail_message_id IN (${placeholders})`,
+    [userId, ...ids]
+  );
+  const cachedIds = db.query<Record<string, unknown>>(
+    `SELECT gmail_message_id FROM gmail_message_scan_cache WHERE user_id = ? AND gmail_message_id IN (${placeholders})`,
+    [userId, ...ids]
+  );
+  const seen = new Set([...eventIds, ...cachedIds].map((row) => String(row.gmail_message_id ?? "")).filter(Boolean));
+  return ids.filter((id) => !seen.has(id));
+}
+
+function rememberScannedMessage(
+  db: CareerDatabase,
+  userId: number,
+  messageId: string,
+  eventType: RecruiterClassification["eventType"],
+  applicationId?: number
+): void {
+  db.run(
+    `INSERT INTO gmail_message_scan_cache (user_id, gmail_message_id, event_type, matched_application_id, scanned_at)
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+     ON CONFLICT(user_id, gmail_message_id) DO UPDATE SET
+       event_type = excluded.event_type,
+       matched_application_id = excluded.matched_application_id,
+       scanned_at = CURRENT_TIMESTAMP`,
+    [userId, messageId, eventType, applicationId ?? null]
+  );
 }
 
 function updateApplicationFromEvent(db: CareerDatabase, application: ApplicationCandidate, classification: RecruiterClassification, receivedAt: string): void {
@@ -476,16 +524,21 @@ export async function syncRecruiterReplies(db: CareerDatabase, userId: number): 
   `, [userId]);
   if (!applications.length) return { scanned: 0, matched: 0, inserted: 0, connected: true };
 
+  const previousCompletedAt = String(db.query<Record<string, unknown>>(
+    "SELECT completed_at FROM gmail_sync_runs WHERE user_id = ? AND status = 'concluido' ORDER BY id DESC LIMIT 1",
+    [userId]
+  )[0]?.completed_at ?? "");
   db.run("INSERT INTO gmail_sync_runs (user_id, status) VALUES (?, 'executando')", [userId]);
   const syncId = Number(db.query<Record<string, unknown>>("SELECT MAX(id) as id FROM gmail_sync_runs WHERE user_id = ?", [userId])[0]?.id ?? 0);
   try {
-    const start = searchStartDate(applications);
+    const start = searchStartDate(applications, previousCompletedAt);
     const query = `after:${start} -in:sent -in:drafts -in:spam -in:trash {candidatura \"processo seletivo\" entrevista \"próxima fase\" \"próxima etapa\" selecionado recrutamento}`;
     const listed = await listMessageIds(query);
     if (!listed) throw new Error("Gmail não conectado. Renove a autorização do agente de e-mail.");
+    const messageIds = unseenMessageIds(db, userId, listed.ids);
     const parsed: ParsedMessage[] = [];
-    for (let index = 0; index < listed.ids.length; index += 8) {
-      const batch = listed.ids.slice(index, index + 8);
+    for (let index = 0; index < messageIds.length; index += 8) {
+      const batch = messageIds.slice(index, index + 8);
       const messages = await Promise.all(batch.map(async (id) => (await listed.client.users.messages.get({ userId: "me", id, format: "full" })).data));
       parsed.push(...messages.map(parseMessage));
     }
@@ -495,7 +548,10 @@ export async function syncRecruiterReplies(db: CareerDatabase, userId: number): 
     let inserted = 0;
     for (const message of parsed) {
       const classification = classifyRecruiterMessage(message.subject, message.bodyText, message.snippet);
-      if (classification.eventType === "other") continue;
+      if (classification.eventType === "other") {
+        rememberScannedMessage(db, userId, message.id, classification.eventType);
+        continue;
+      }
       let match = matchApplication(message, applications);
       if (!match.application) {
         const created = createApplicationFromDecision(db, userId, message, classification);
@@ -504,7 +560,10 @@ export async function syncRecruiterReplies(db: CareerDatabase, userId: number): 
           match = { application: created, confidence: 1 };
         }
       }
-      if (!match.application) continue;
+      if (!match.application) {
+        rememberScannedMessage(db, userId, message.id, classification.eventType);
+        continue;
+      }
       matched += 1;
       const existing = db.query<Record<string, unknown>>(
         "SELECT id FROM recruiter_email_events WHERE user_id = ? AND gmail_message_id = ? LIMIT 1",
@@ -558,6 +617,7 @@ export async function syncRecruiterReplies(db: CareerDatabase, userId: number): 
       );
       if (!existing) inserted += 1;
       updateApplicationFromEvent(db, match.application, { ...classification, stage: resolvedStage }, message.receivedAt);
+      rememberScannedMessage(db, userId, message.id, classification.eventType, Number(match.application.application_id));
     }
     db.run(`
       UPDATE applications

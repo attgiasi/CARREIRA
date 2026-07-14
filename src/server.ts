@@ -8,6 +8,7 @@ import { audit } from "./safety/auditLogger.js";
 import { CareerDatabase } from "./database/db.js";
 import { hasGmailSecrets } from "./config/secrets.js";
 import { syncCareerGmail } from "./modules/gmail/careerGmailSync.js";
+import { gmailProtectedRetryAfter } from "./modules/gmail/gmailClient.js";
 
 ensureRuntimeFolders();
 
@@ -43,6 +44,17 @@ async function runScheduledGmailSync(): Promise<void> {
   try {
     const db = await CareerDatabase.open();
     const ownerUserId = Number(process.env.CAREER_HUNTER_USER_ID || 1);
+    const latest = db.query<Record<string, unknown>>(
+      "SELECT status, error_message, completed_at FROM gmail_sync_runs WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+      [ownerUserId]
+    )[0];
+    const retryAfter = String(latest?.status ?? "") === "erro"
+      ? gmailProtectedRetryAfter(latest?.error_message ?? "", String(latest?.completed_at ?? ""))
+      : "";
+    if (Date.parse(retryAfter) > Date.now()) {
+      audit("server", "gmail-auto-sync-paused", `Gmail em pausa automática até ${retryAfter}; nenhuma chamada foi realizada.`);
+      return;
+    }
     const result = await syncCareerGmail(db, ownerUserId);
     audit("server", "gmail-auto-sync", `Gmail atualizado automaticamente para o usuário ${ownerUserId}: ${String(result.jobsImported ?? 0)} vaga(s) nova(s).`);
   } catch (error) {

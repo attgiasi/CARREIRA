@@ -101,6 +101,11 @@
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
+.connection-pill.limited i {
+  background: var(--warn);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--warn) 16%, transparent);
+}
+
 .state-chip.danger {
   border-color: color-mix(in srgb, var(--danger) 45%, var(--line));
   background: color-mix(in srgb, var(--danger) 12%, var(--panel));

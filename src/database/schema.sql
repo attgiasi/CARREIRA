@@ -251,6 +251,25 @@ CREATE TABLE IF NOT EXISTS gmail_sync_runs (
 
 CREATE INDEX IF NOT EXISTS idx_gmail_sync_user ON gmail_sync_runs(user_id, started_at);
 
+CREATE TABLE IF NOT EXISTS gmail_message_scan_cache (
+  user_id INTEGER NOT NULL,
+  gmail_message_id TEXT NOT NULL,
+  event_type TEXT,
+  matched_application_id INTEGER,
+  scanned_at TEXT DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, gmail_message_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_gmail_scan_cache_user ON gmail_message_scan_cache(user_id, scanned_at);
+
+CREATE TABLE IF NOT EXISTS gmail_job_alert_sync_state (
+  user_id INTEGER PRIMARY KEY,
+  last_scan_at TEXT,
+  messages_scanned INTEGER DEFAULT 0,
+  jobs_found INTEGER DEFAULT 0,
+  jobs_imported INTEGER DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS companies (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT,

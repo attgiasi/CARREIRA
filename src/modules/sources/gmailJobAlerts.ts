@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { hasGmailSecrets } from "../../config/secrets.js";
 import { RawJob } from "../../types.js";
 import { audit, logError } from "../../safety/auditLogger.js";
-import { getGmailClient, GmailPayload } from "../gmail/gmailClient.js";
+import { getGmailClient, GmailPayload, isGmailRateLimitError } from "../gmail/gmailClient.js";
 
 const redirectParameters = ["url", "q", "u", "target", "redirect", "redirect_url", "redirect_uri", "destination", "dest"];
 const ignoredText = /^(acesse|abrir|aplicar|candidate-se|clique aqui|saiba mais|ver agora|ver detalhes|ver oportunidade|ver vaga)$/i;
@@ -170,7 +170,7 @@ export async function readGmailJobAlerts(maxMessages = 100): Promise<RawJob[]> {
   try {
     const gmail = await getGmailClient();
     if (!gmail) return [];
-    const query = 'newer_than:45d (vaga OR vagas OR oportunidade OR oportunidades OR "job alert" OR "alerta de vagas" OR "novas vagas")';
+    const query = 'newer_than:14d (vaga OR vagas OR oportunidade OR oportunidades OR "job alert" OR "alerta de vagas" OR "novas vagas")';
     const list = await gmail.users.messages.list({ userId: "me", q: query, maxResults: Math.min(500, Math.max(1, maxMessages)) });
     const jobs: RawJob[] = [];
     for (const item of list.data.messages ?? []) {
@@ -201,6 +201,7 @@ export async function readGmailJobAlerts(maxMessages = 100): Promise<RawJob[]> {
     return jobs;
   } catch (error) {
     logError("gmailJobAlerts", error);
+    if (isGmailRateLimitError(error)) throw error;
     return [];
   }
 }

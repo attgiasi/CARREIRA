@@ -672,6 +672,21 @@ function formatDate(value) {
   return date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
 }
 
+function protectGmailSyncButton(button, gmail, readyLabel) {
+  if (!button || !gmail?.rateLimited) return;
+  const retryAt = Date.parse(gmail.retryAfter || "");
+  button.disabled = true;
+  button.textContent = Number.isFinite(retryAt)
+    ? `Retoma às ${new Date(retryAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}`
+    : "Pausa temporária";
+  if (!Number.isFinite(retryAt)) return;
+  window.setTimeout(() => {
+    if (!document.contains(button)) return;
+    button.disabled = false;
+    button.textContent = readyLabel;
+  }, Math.max(1_000, retryAt - Date.now() + 2_000));
+}
+
 function moneyAwareSalary(row) {
   const salary = String(row.salary || "").trim().toLowerCase();
   return salary && !["nao informado", "não informado", "a combinar", "-"].includes(salary);
@@ -937,6 +952,13 @@ async function dashboard() {
   const phase2 = pipeline.phase2 || {};
   const phase3 = pipeline.phase3 || {};
   const sourceRows = (sourceData.sources || []).slice(0, 6);
+  const gmailLimited = Boolean(gmail.rateLimited);
+  const gmailPillClass = gmailLimited ? "limited" : gmail.connected ? "online" : "offline";
+  const gmailPillLabel = gmailLimited ? "conectado · em pausa" : gmail.connected ? "conectado" : "desconectado";
+  const gmailAccountLabel = gmail.email || (gmail.connected ? "Conta Google autorizada" : "Conta não conectada");
+  const gmailStatusDetail = gmailLimited
+    ? `${gmail.warning || "O Google limitou temporariamente as leituras."}${gmail.retryAfter ? ` Nova tentativa após ${formatDate(gmail.retryAfter)}.` : ""}`
+    : `${gmail.lastSync?.completed_at ? `Última leitura: ${formatDate(gmail.lastSync.completed_at)}` : "Nenhuma leitura registrada"} · atualização automática a cada ${gmail.automaticEveryMinutes || 30} min`;
 
   app.innerHTML = `<div class="executive-head">
     <div>
@@ -945,7 +967,7 @@ async function dashboard() {
       <p>${pipeline.actual || 0} candidaturas realmente enviadas. Filas, pesquisas e links pendentes ficam fora deste total.</p>
     </div>
     <div class="executive-actions">
-      <span class="connection-pill ${gmail.connected ? "online" : "offline"}"><i></i> Gmail ${gmail.connected ? "conectado" : "desconectado"}</span>
+      <span class="connection-pill ${gmailPillClass}"><i></i> Gmail ${gmailPillLabel}</span>
       <button id="syncGmail">Atualizar Gmail agora</button>
       <button id="scanNow" class="primary">Buscar vagas</button>
     </div>
@@ -986,17 +1008,17 @@ async function dashboard() {
       </div>
     </section>
     <section class="gmail-section">
-      <div class="section-head"><div><span class="eyebrow">Gmail</span><h3>Retornos, alertas e newsletters</h3></div><span class="state-chip ${gmail.connected ? "success" : "warning"}">${gmail.connected ? "Ativo" : "Atenção"}</span></div>
+      <div class="section-head"><div><span class="eyebrow">Gmail</span><h3>Retornos, alertas e newsletters</h3></div><span class="state-chip ${gmail.connected && !gmailLimited ? "success" : "warning"}">${gmailLimited ? "Pausa temporária" : gmail.connected ? "Ativo" : "Atenção"}</span></div>
       <div class="connection-detail">
-        <strong>${escapeHtml(gmail.email || "Conta não conectada")}</strong>
-        <small>${gmail.lastSync?.completed_at ? `Última leitura: ${formatDate(gmail.lastSync.completed_at)}` : "Nenhuma leitura registrada"} · atualização automática a cada ${gmail.automaticEveryMinutes || 30} min</small>
+        <strong>${escapeHtml(gmailAccountLabel)}</strong>
+        <small>${escapeHtml(gmailStatusDetail)}</small>
       </div>
       <div class="mini-stats">
         <div><span>Mensagens verificadas</span><strong>${gmail.lastSync?.scanned_messages || 0}</strong></div>
         <div><span>Retornos vinculados</span><strong>${gmail.lastSync?.matched_messages || 0}</strong></div>
         <div><span>Novos eventos</span><strong>${gmail.lastSync?.inserted_events || 0}</strong></div>
       </div>
-      ${gmail.connected ? "" : `<p class="inline-alert">${escapeHtml(gmail.error || "Renove a autorização do Gmail.")}</p>`}
+      ${gmailLimited ? `<p class="inline-alert">A autorização continua válida. Não reconecte a conta; aguarde a retomada automática.</p>` : gmail.connected ? "" : `<p class="inline-alert">${escapeHtml(gmail.error || "Renove a autorização do Gmail.")}</p>`}
     </section>
   </div>
 
@@ -1053,6 +1075,7 @@ async function dashboard() {
       button.textContent = "Atualizar Gmail agora";
     }
   };
+  protectGmailSyncButton(document.querySelector("#syncGmail"), gmail, "Atualizar Gmail agora");
 }
 
 function formatMoney(value) {
@@ -1195,15 +1218,19 @@ async function returnsPage(initialMessage = "") {
   const events = data.events || [];
   const pipeline = data.pipeline || {};
   const sources = [...new Set([...rows, ...events].map(sourceName).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const gmailLimited = Boolean(gmail.rateLimited);
+  const gmailPillClass = gmailLimited ? "limited" : gmail.connected ? "online" : "offline";
+  const gmailPillLabel = gmailLimited ? "conectado · em pausa" : gmail.connected ? "conectado" : "desconectado";
 
   app.innerHTML = `<section class="page-panel returns-page">
     <div class="page-title-row">
       <div><span class="eyebrow">Retornos</span><h2>Decisões, respostas e próximas ações</h2><p>Todas as candidaturas enviadas aparecem aqui, inclusive as que ainda não receberam resposta. Cada retorno do Gmail abre diretamente no e-mail correspondente.</p></div>
       <div class="toolbar-actions">
-        <span class="connection-pill ${gmail.connected ? "online" : "offline"}"><i></i> Gmail ${gmail.connected ? "conectado" : "desconectado"}</span>
+        <span class="connection-pill ${gmailPillClass}"><i></i> Gmail ${gmailPillLabel}</span>
         <button id="syncReturnsGmail" class="primary">Atualizar Gmail</button>
       </div>
     </div>
+    ${gmailLimited ? `<div class="note"><strong>Gmail conectado.</strong><p>O Google pausou temporariamente novas leituras${gmail.retryAfter ? ` até ${escapeHtml(formatDate(gmail.retryAfter))}` : ""}. O Ápice retomará automaticamente sem exigir novo login.</p></div>` : ""}
     <div id="returnsMessage" class="note ${initialMessage ? "" : "hidden"}">${initialMessage}</div>
     <div class="kpi-grid returns-kpis">
       ${metricCard("Candidaturas", pipeline.actual, "Envios realmente confirmados", "blue")}
@@ -1273,6 +1300,7 @@ async function returnsPage(initialMessage = "") {
       button.textContent = "Atualizar Gmail";
     }
   };
+  protectGmailSyncButton(document.querySelector("#syncReturnsGmail"), gmail, "Atualizar Gmail");
   applyReturnFilters();
 }
 

@@ -15,7 +15,7 @@ import { enqueueApplication } from "../applications/approvalQueue.js";
 import { CandidateProfile, decideAutomation, MemoryAnswer } from "../applications/autoApplyEngine.js";
 import { AgentSettings } from "../../types.js";
 import { buildSalaryAnalytics, parseBaseSalary, sourceDisplayName } from "./analytics.js";
-import { getGmailConnectionStatus } from "../gmail/gmailClient.js";
+import { getGmailConnectionStatus, gmailProtectedRetryAfter, gmailRetryAfterFromError, isGmailRateLimitError } from "../gmail/gmailClient.js";
 import { ACTUAL_APPLICATION_SQL, getRecruiterPipelineMetrics } from "../gmail/recruiterReplyReader.js";
 import { syncCareerGmail } from "../gmail/careerGmailSync.js";
 import {
@@ -91,6 +91,16 @@ function assignLegacyDataToUser(db: CareerDatabase, userId: number): void {
   for (const table of ["jobs", "informal_opportunities", "candidate_profiles", "applications", "answer_memory", "application_attempts"]) {
     db.run(`UPDATE ${table} SET user_id = ? WHERE user_id IS NULL OR user_id = 1`, [userId]);
   }
+}
+
+function activeGmailBackoff(db: CareerDatabase, userId: number): string {
+  const latest = db.query<Record<string, unknown>>(
+    "SELECT status, error_message, completed_at FROM gmail_sync_runs WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+    [userId]
+  )[0];
+  if (String(latest?.status ?? "") !== "erro") return "";
+  const retryAfter = gmailProtectedRetryAfter(latest?.error_message ?? "", String(latest?.completed_at ?? ""));
+  return Date.parse(retryAfter) > Date.now() ? retryAfter : "";
 }
 
 function loadUserSettings(db: CareerDatabase, userId: number): AgentSettings {
@@ -680,21 +690,53 @@ apiRouter.get("/summary", async (req, res) => {
 apiRouter.get("/gmail/status", async (req, res) => {
   const db = await CareerDatabase.open();
   const userId = currentUserId(req);
-  const connection = await getGmailConnectionStatus();
   const lastSync = db.query<Record<string, unknown>>(`
     SELECT started_at, completed_at, status, scanned_messages, matched_messages, inserted_events, error_message
     FROM gmail_sync_runs WHERE user_id = ? ORDER BY id DESC LIMIT 1
   `, [userId])[0] ?? null;
+  const retryAfter = activeGmailBackoff(db, userId);
+  const connection = retryAfter && hasGmailSecrets()
+    ? {
+        connected: true,
+        email: "",
+        messagesTotal: 0,
+        rateLimited: true,
+        retryAfter,
+        warning: "Conta autorizada. O Google aplicou uma pausa temporária por excesso de leituras; o Ápice tentará novamente automaticamente."
+      }
+    : await getGmailConnectionStatus();
   res.json({ ...connection, lastSync, automaticEveryMinutes: Number(process.env.GMAIL_SYNC_INTERVAL_MINUTES || 30) });
 });
 
 apiRouter.post("/gmail/sync", async (req, res) => {
   const db = await CareerDatabase.open();
   const userId = currentUserId(req);
+  const activeRetryAfter = activeGmailBackoff(db, userId);
+  if (activeRetryAfter) {
+    res.status(429).json({
+      ok: false,
+      connected: true,
+      rateLimited: true,
+      retryAfter: activeRetryAfter,
+      error: `Gmail conectado. Aguarde até ${activeRetryAfter}; o Ápice retomará automaticamente sem novo login.`
+    });
+    return;
+  }
   try {
     const result = await syncCareerGmail(db, userId);
     res.json({ ok: true, ...result });
   } catch (error) {
+    if (isGmailRateLimitError(error)) {
+      const retryAfter = gmailRetryAfterFromError(error);
+      res.status(429).json({
+        ok: false,
+        connected: true,
+        rateLimited: true,
+        retryAfter,
+        error: `Gmail conectado, mas o Google aplicou uma pausa temporária${retryAfter ? ` até ${retryAfter}` : ""}. O Ápice tentará novamente automaticamente.`
+      });
+      return;
+    }
     res.status(502).json({ ok: false, error: error instanceof Error ? error.message : String(error) });
   }
 });
