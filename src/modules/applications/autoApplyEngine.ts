@@ -60,6 +60,14 @@ function memoryValue(memory: MemoryAnswer[], key: string): string {
   return memory.find((item) => item.question_key === key)?.answer_text?.trim() ?? "";
 }
 
+function firstMemoryValue(memory: MemoryAnswer[], ...keys: string[]): string {
+  for (const key of keys) {
+    const value = memoryValue(memory, key);
+    if (value) return value;
+  }
+  return "";
+}
+
 function addIfMissing(questions: ApplicationQuestion[], value: string | undefined, question: ApplicationQuestion): void {
   if (!String(value ?? "").trim()) questions.push(question);
 }
@@ -134,8 +142,20 @@ export function decideAutomation(
     "Currículo base": profile.resume_file ?? String(row.generated_resume_path ?? ""),
     "Carta de apresentação": String(row.cover_letter_path ?? ""),
     "Disponibilidade": memoryValue(memory, "availability.start"),
+    "Disponibilidade de horário": firstMemoryValue(memory, "availability.schedule", "availability.hours"),
     "Pretensão salarial": memoryValue(memory, "salary.expectation.default"),
-    "Autorização para trabalhar": memoryValue(memory, "work.authorization.br")
+    "Autorização para trabalhar": memoryValue(memory, "work.authorization.br"),
+    "CPF": memoryValue(memory, "identity.cpf"),
+    "RG": memoryValue(memory, "identity.rg"),
+    "Data de nascimento": memoryValue(memory, "identity.birthDate"),
+    "Estado civil": memoryValue(memory, "identity.maritalStatus"),
+    "Endereço": memoryValue(memory, "address.street"),
+    "Número": memoryValue(memory, "address.number"),
+    "Complemento": memoryValue(memory, "address.complement"),
+    "Bairro": memoryValue(memory, "address.neighborhood"),
+    "CEP": memoryValue(memory, "address.postalCode"),
+    "Meio de transporte": memoryValue(memory, "work.transport"),
+    "Inglês": firstMemoryValue(memory, "language.english", "languages.english")
   };
 
   if (questions.length) {
@@ -164,12 +184,12 @@ export function decideAutomation(
 
   if (sourceIsLinkedIn(source, url)) {
     return {
-      status: "linkedin_manual",
-      message: "LinkedIn será usado apenas para localizar a vaga.",
-      nextStep: "Abra o LinkedIn manualmente, revise a vaga e aplique pela sua conta. O agente mantém currículo, carta e respostas prontos.",
+      status: "linkedin_assistido",
+      message: "Pacote de preenchimento pronto para a candidatura no LinkedIn.",
+      nextStep: "Abra a vaga ou o Easy Apply, execute Preencher com Ápice e revise as perguntas específicas antes de enviar.",
       questions: [],
       filledFields,
-      canAutofill: false,
+      canAutofill: true,
       canSubmitAutomatically: false
     };
   }

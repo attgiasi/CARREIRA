@@ -244,6 +244,7 @@ function applicationStatusForDecision(status: string): string {
     precisa_canal: "Aguardando canal de candidatura",
     precisa_vaga_real: "Aguardando vaga real da fonte",
     linkedin_manual: "LinkedIn manual",
+    linkedin_assistido: "Preenchimento do LinkedIn pronto",
     autofill_pronto: "Preenchimento automático pronto",
     auto_apply_pronto: "Candidatura automática pronta"
   };
@@ -584,6 +585,63 @@ apiRouter.get("/summary", async (req, res) => {
     ORDER BY id DESC
     LIMIT 1
   `, [userId])[0] ?? null;
+  const activityTrend = db.query<Record<string, unknown>>(`
+    WITH RECURSIVE days(day) AS (
+      SELECT date('now', '-13 days')
+      UNION ALL
+      SELECT date(day, '+1 day') FROM days WHERE day < date('now')
+    )
+    SELECT
+      day,
+      (
+        SELECT COUNT(*) FROM applications a
+        WHERE a.user_id = ? AND ${ACTUAL_APPLICATION_SQL} AND date(a.applied_at) = days.day
+      ) as applications,
+      (
+        SELECT COUNT(*) FROM recruiter_email_events e
+        WHERE e.user_id = ? AND e.event_type <> 'confirmation' AND date(e.received_at) = days.day
+      ) as replies
+    FROM days
+  `, [userId, userId]);
+  const momentumCounts = db.query<Record<string, unknown>>(`
+    SELECT
+      SUM(CASE WHEN datetime(a.applied_at) >= datetime('now', '-7 days') THEN 1 ELSE 0 END) as applications_7d,
+      SUM(CASE WHEN datetime(a.applied_at) >= datetime('now', '-30 days') THEN 1 ELSE 0 END) as applications_30d
+    FROM applications a
+    WHERE a.user_id = ? AND ${ACTUAL_APPLICATION_SQL}
+  `, [userId])[0] ?? {};
+  const replyMomentum = db.query<Record<string, unknown>>(`
+    SELECT
+      SUM(CASE WHEN event_type <> 'confirmation' AND datetime(received_at) >= datetime('now', '-7 days') THEN 1 ELSE 0 END) as replies_7d,
+      SUM(CASE WHEN outcome = 'positiva' AND datetime(received_at) >= datetime('now', '-7 days') THEN 1 ELSE 0 END) as positive_7d,
+      SUM(CASE WHEN outcome = 'negativa' AND datetime(received_at) >= datetime('now', '-7 days') THEN 1 ELSE 0 END) as negative_7d,
+      COUNT(DISTINCT application_id) as linked_applications
+    FROM recruiter_email_events
+    WHERE user_id = ?
+  `, [userId])[0] ?? {};
+  const responseLag = Number(db.query<Record<string, unknown>>(`
+    SELECT ROUND(AVG(julianday(first_reply.received_at) - julianday(a.applied_at)), 1) as value
+    FROM applications a
+    JOIN (
+      SELECT application_id, MIN(received_at) as received_at
+      FROM recruiter_email_events
+      WHERE user_id = ? AND event_type <> 'confirmation'
+      GROUP BY application_id
+    ) first_reply ON first_reply.application_id = a.id
+    WHERE a.user_id = ? AND a.applied_at IS NOT NULL
+  `, [userId, userId])[0]?.value ?? 0);
+  const actualApplications = Number(pipeline.actual ?? 0);
+  const answeredApplications = Number(pipeline.selected ?? 0) + Number(pipeline.rejected ?? 0);
+  const momentum = {
+    applications7d: Number(momentumCounts.applications_7d ?? 0),
+    applications30d: Number(momentumCounts.applications_30d ?? 0),
+    replies7d: Number(replyMomentum.replies_7d ?? 0),
+    positive7d: Number(replyMomentum.positive_7d ?? 0),
+    negative7d: Number(replyMomentum.negative_7d ?? 0),
+    positiveRate: answeredApplications ? Math.round((Number(pipeline.selected ?? 0) / answeredApplications) * 1000) / 10 : 0,
+    emailCoverage: actualApplications ? Math.round((Number(replyMomentum.linked_applications ?? 0) / actualApplications) * 1000) / 10 : 0,
+    averageFirstReplyDays: Math.max(0, responseLag)
+  };
   res.json({
     jobs,
     availableJobs,
@@ -613,6 +671,8 @@ apiRouter.get("/summary", async (req, res) => {
     recentRecruiterEvents,
     recruiterActions,
     lastGmailSync,
+    activityTrend,
+    momentum,
     environment: envStatus()
   });
 });
@@ -651,6 +711,76 @@ apiRouter.get("/email-events", async (req, res) => {
     LIMIT 100
   `, [userId]);
   res.json({ events });
+});
+
+apiRouter.get("/returns", async (req, res) => {
+  const db = await CareerDatabase.open();
+  const userId = currentUserId(req);
+  const applications = db.query<Record<string, unknown>>(`
+    WITH ranked_events AS (
+      SELECT e.*,
+             ROW_NUMBER() OVER (
+               PARTITION BY e.application_id
+               ORDER BY datetime(e.received_at) DESC, e.id DESC
+             ) as event_rank,
+             COUNT(*) OVER (PARTITION BY e.application_id) as event_count
+      FROM recruiter_email_events e
+      WHERE e.user_id = ?
+    )
+    SELECT
+      a.id as application_id,
+      a.job_id,
+      a.application_status,
+      a.applied_at,
+      a.pipeline_stage,
+      a.pipeline_outcome,
+      a.recruiter_status,
+      a.last_recruiter_email_at,
+      a.next_action,
+      COALESCE(a.source_platform, j.source) as source,
+      j.title,
+      j.company,
+      j.url,
+      j.salary,
+      j.location,
+      j.work_model,
+      j.fit_score,
+      j.hire_chance_score,
+      latest.id as latest_event_id,
+      latest.gmail_message_id,
+      latest.received_at as latest_email_at,
+      latest.sender_name as latest_sender_name,
+      latest.sender_email as latest_sender_email,
+      latest.subject as latest_subject,
+      latest.event_type as latest_event_type,
+      latest.outcome as latest_event_outcome,
+      latest.requires_action as latest_requires_action,
+      latest.action_summary as latest_action_summary,
+      latest.action_url as latest_email_url,
+      latest.excerpt as latest_excerpt,
+      COALESCE(latest.event_count, 0) as email_count
+    FROM applications a
+    LEFT JOIN jobs j ON j.id = a.job_id
+    LEFT JOIN ranked_events latest
+      ON latest.application_id = a.id AND latest.event_rank = 1
+    WHERE a.user_id = ? AND ${ACTUAL_APPLICATION_SQL}
+    ORDER BY datetime(COALESCE(latest.received_at, a.applied_at, a.created_at)) DESC, a.id DESC
+    LIMIT 500
+  `, [userId, userId]);
+  const events = db.query<Record<string, unknown>>(`
+    SELECT e.*, j.title, j.company, j.source, j.url, a.applied_at
+    FROM recruiter_email_events e
+    LEFT JOIN jobs j ON j.id = e.job_id
+    LEFT JOIN applications a ON a.id = e.application_id
+    WHERE e.user_id = ?
+    ORDER BY datetime(e.received_at) DESC, e.id DESC
+    LIMIT 500
+  `, [userId]);
+  res.json({
+    applications,
+    events,
+    pipeline: getRecruiterPipelineMetrics(db, userId)
+  });
 });
 
 apiRouter.get("/sources", async (req, res) => {

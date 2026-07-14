@@ -17,7 +17,7 @@ const tabs = [
   ["dashboard", "Painel"],
   ["jobs", "Vagas"],
   ["applications", "Candidaturas"],
-  ["actions", "Próximas ações"],
+  ["returns", "Retornos"],
   ["sources", "Fontes"],
   ["profile", "Meu currículo"]
 ];
@@ -931,6 +931,8 @@ async function dashboard() {
   ]);
   const pipeline = summary.pipeline || {};
   const salary = summary.salary || {};
+  const momentum = summary.momentum || {};
+  const activityTrend = summary.activityTrend || [];
   const phase1 = pipeline.phase1 || {};
   const phase2 = pipeline.phase2 || {};
   const phase3 = pipeline.phase3 || {};
@@ -958,6 +960,21 @@ async function dashboard() {
     ${metricCard("Na 3ª fase", pipeline.stage3, `${phase3.waiting || 0} em andamento`, "violet")}
     ${metricCard("Ações suas", pipeline.actions, "E-mails ou etapas para concluir", "warning")}
   </div>
+
+  <section class="momentum-band">
+    <div class="momentum-intro">
+      <span class="eyebrow">Ritmo e eficiência</span>
+      <h3>Movimento dos últimos 14 dias</h3>
+      <p>Compare candidaturas enviadas com respostas reais para ajustar fonte, volume e qualidade.</p>
+    </div>
+    <div class="momentum-stats">
+      <div><span>Enviadas em 7 dias</span><strong>${momentum.applications7d || 0}</strong><small>${momentum.applications30d || 0} nos últimos 30 dias</small></div>
+      <div><span>Respostas em 7 dias</span><strong>${momentum.replies7d || 0}</strong><small>${momentum.positive7d || 0} positivas · ${momentum.negative7d || 0} negativas</small></div>
+      <div><span>Taxa positiva</span><strong>${momentum.positiveRate || 0}%</strong><small>Entre retornos com decisão</small></div>
+      <div><span>Cobertura do Gmail</span><strong>${momentum.emailCoverage || 0}%</strong><small>${momentum.averageFirstReplyDays || 0} dia(s) até o primeiro retorno</small></div>
+    </div>
+    ${activityPulseChart(activityTrend)}
+  </section>
 
   <div class="dashboard-grid dashboard-grid-main">
     <section class="funnel-section">
@@ -1004,13 +1021,13 @@ async function dashboard() {
 
   <div class="dashboard-grid dashboard-grid-data">
     <section>
-      <div class="section-head"><div><span class="eyebrow">Retornos recentes</span><h3>O que os recrutadores responderam</h3></div></div>
+      <div class="section-head"><div><span class="eyebrow">Retornos recentes</span><h3>O que os recrutadores responderam</h3></div><button data-tab="returns">Ver todos</button></div>
       <div class="event-feed">
         ${(summary.recentRecruiterEvents || []).map(recruiterEventRow).join("") || `<div class="empty-mini">Atualize o Gmail para classificar os retornos.</div>`}
       </div>
     </section>
     <section>
-      <div class="section-head"><div><span class="eyebrow">Prioridade</span><h3>Próximas ações</h3></div></div>
+      <div class="section-head"><div><span class="eyebrow">Prioridade</span><h3>Próximas ações</h3></div><button data-tab="returns">Abrir central</button></div>
       <div class="action-feed">
         ${(summary.recruiterActions || []).map((row) => `<div class="decision-row">
           <span class="decision-mark needs-action"></span>
@@ -1066,6 +1083,17 @@ function salaryChart(rows) {
   </div>`).join("")}</div>`;
 }
 
+function activityPulseChart(rows) {
+  const max = Math.max(1, ...rows.flatMap((row) => [Number(row.applications || 0), Number(row.replies || 0)]));
+  return `<div class="activity-pulse">
+    <div class="activity-legend"><span><i class="application"></i>Candidaturas</span><span><i class="reply"></i>Respostas</span></div>
+    <div class="activity-bars">${rows.map((row) => `<div class="activity-day" title="${escapeHtml(formatDate(row.day))}: ${row.applications || 0} candidatura(s), ${row.replies || 0} resposta(s)">
+      <div><i class="application" style="height:${Math.max(Number(row.applications) ? 8 : 2, Math.round((Number(row.applications || 0) / max) * 100))}%"></i><i class="reply" style="height:${Math.max(Number(row.replies) ? 8 : 2, Math.round((Number(row.replies || 0) / max) * 100))}%"></i></div>
+      <small>${escapeHtml(String(row.day || "").slice(5).replace("-", "/"))}</small>
+    </div>`).join("")}</div>
+  </div>`;
+}
+
 function sourcePerformanceRow(row) {
   return `<div class="source-performance-row">
     <div><strong>${escapeHtml(row.source)}</strong><small>${row.applications || 0} candidaturas · ${row.jobs || 0} vagas</small></div>
@@ -1089,6 +1117,163 @@ function recruiterEventRow(row) {
     <span class="outcome-label ${tone}">${label}</span>
     ${row.action_url ? `<a class="action" href="${escapeHtml(row.action_url)}" target="_blank" rel="noreferrer">E-mail</a>` : ""}
   </div>`;
+}
+
+function gmailMessageUrl(row) {
+  const direct = String(row.latest_email_url || row.action_url || "").trim();
+  if (direct) return direct;
+  const messageId = String(row.gmail_message_id || "").trim();
+  return messageId ? `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(messageId)}` : "";
+}
+
+function applicationReturnState(row) {
+  const outcome = String(row.pipeline_outcome || row.latest_event_outcome || "sem_retorno");
+  const stage = Number(row.pipeline_stage || 1);
+  if (outcome === "negativa" || row.latest_event_type === "rejection") return { id: "negative", label: "Não selecionado", tone: "danger" };
+  if (outcome === "positiva" || stage >= 2 || ["advanced", "interview", "offer"].includes(String(row.latest_event_type || ""))) {
+    return { id: "positive", label: stage >= 3 ? "Etapa avançada" : "Retorno positivo", tone: "success" };
+  }
+  return { id: "waiting", label: "Aguardando retorno", tone: "neutral" };
+}
+
+function emailEventState(row) {
+  const type = String(row.event_type || "other");
+  if (row.outcome === "negativa" || type === "rejection") return { id: "negative", label: "Negativo", tone: "danger" };
+  if (row.outcome === "positiva" || ["advanced", "interview", "offer"].includes(type)) return { id: "positive", label: type === "offer" ? "Proposta" : type === "interview" ? "Entrevista" : "Positivo", tone: "success" };
+  if (Number(row.requires_action || 0) === 1 || type === "action_required") return { id: "action", label: "Ação necessária", tone: "warning" };
+  if (type === "confirmation") return { id: "waiting", label: "Candidatura confirmada", tone: "info" };
+  if (type === "reviewing") return { id: "waiting", label: "Em análise", tone: "gold" };
+  return { id: "waiting", label: "Atualização", tone: "neutral" };
+}
+
+function returnApplicationCard(row) {
+  const state = applicationReturnState(row);
+  const emailUrl = gmailMessageUrl(row);
+  const needsAction = Number(row.latest_requires_action || 0) === 1 || String(row.next_action || "").trim();
+  return `<article class="return-card">
+    <div class="return-card-head">
+      <div><span class="eyebrow">${escapeHtml(sourceName(row))}</span><h3>${escapeHtml(row.title || "Vaga")}</h3><p>${escapeHtml(row.company || "Empresa a confirmar")}</p></div>
+      <span class="state-chip ${state.tone}">${escapeHtml(state.label)}</span>
+    </div>
+    ${metaGrid([
+      ["Candidatado", escapeHtml(formatDate(row.applied_at))],
+      ["Etapa", `${Number(row.pipeline_stage || 1)}ª fase`],
+      ["E-mails", String(row.email_count || 0)],
+      ["Último retorno", row.latest_email_at ? escapeHtml(formatDate(row.latest_email_at)) : "Ainda não recebido"]
+    ])}
+    <div class="return-email-preview ${row.latest_subject ? "" : "empty"}">
+      <span>${row.latest_subject ? "Último e-mail" : "Situação atual"}</span>
+      <strong>${escapeHtml(row.latest_subject || "Nenhuma resposta vinculada a esta candidatura")}</strong>
+      <p>${escapeHtml(shortDescription(row.latest_excerpt || row.recruiter_status || "O Gmail continuará monitorando esta vaga automaticamente.", 360))}</p>
+      ${needsAction ? `<small class="return-action-note">${escapeHtml(row.latest_action_summary || row.next_action || "Abra o retorno e conclua a ação solicitada.")}</small>` : ""}
+    </div>
+    <div class="card-actions">
+      ${emailUrl ? `<a class="action primary-link" href="${escapeHtml(emailUrl)}" target="_blank" rel="noreferrer">Abrir e-mail</a>` : ""}
+      ${row.url && !isGoogleSearchUrl(row.url) ? `<a class="action" href="${escapeHtml(row.url)}" target="_blank" rel="noreferrer">Abrir vaga</a>` : ""}
+      ${row.job_id ? `<button data-detail="${row.job_id}">Detalhes</button>` : ""}
+    </div>
+  </article>`;
+}
+
+function returnHistoryRow(row) {
+  const state = emailEventState(row);
+  const emailUrl = gmailMessageUrl(row);
+  return `<div class="return-history-row">
+    <span class="decision-mark ${state.id === "positive" ? "positive" : state.id === "negative" ? "negative" : state.id === "action" ? "needs-action" : "waiting"}"></span>
+    <div class="return-history-main">
+      <div><strong>${escapeHtml(row.subject || "Atualização da candidatura")}</strong><span class="state-chip ${state.tone}">${escapeHtml(state.label)}</span></div>
+      <small>${escapeHtml(row.title || row.job_title || "Vaga")} · ${escapeHtml(row.company || "Empresa")} · ${escapeHtml(formatDate(row.received_at))}</small>
+      <p>${escapeHtml(shortDescription(row.excerpt || row.action_summary || "", 420))}</p>
+    </div>
+    ${emailUrl ? `<a class="action" href="${escapeHtml(emailUrl)}" target="_blank" rel="noreferrer">Abrir e-mail</a>` : ""}
+  </div>`;
+}
+
+async function returnsPage(initialMessage = "") {
+  const [data, gmail] = await Promise.all([json("/api/returns"), json("/api/gmail/status")]);
+  const rows = data.applications || [];
+  const events = data.events || [];
+  const pipeline = data.pipeline || {};
+  const sources = [...new Set([...rows, ...events].map(sourceName).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  app.innerHTML = `<section class="page-panel returns-page">
+    <div class="page-title-row">
+      <div><span class="eyebrow">Retornos</span><h2>Decisões, respostas e próximas ações</h2><p>Todas as candidaturas enviadas aparecem aqui, inclusive as que ainda não receberam resposta. Cada retorno do Gmail abre diretamente no e-mail correspondente.</p></div>
+      <div class="toolbar-actions">
+        <span class="connection-pill ${gmail.connected ? "online" : "offline"}"><i></i> Gmail ${gmail.connected ? "conectado" : "desconectado"}</span>
+        <button id="syncReturnsGmail" class="primary">Atualizar Gmail</button>
+      </div>
+    </div>
+    <div id="returnsMessage" class="note ${initialMessage ? "" : "hidden"}">${initialMessage}</div>
+    <div class="kpi-grid returns-kpis">
+      ${metricCard("Candidaturas", pipeline.actual, "Envios realmente confirmados", "blue")}
+      ${metricCard("Retornos positivos", pipeline.selected, "Avanços, entrevistas ou propostas", "success")}
+      ${metricCard("Retornos negativos", pipeline.rejected, "Processos encerrados", "danger")}
+      ${metricCard("Sem retorno", pipeline.pending, "Monitoramento ativo", "neutral")}
+      ${metricCard("Ação necessária", pipeline.actions, "Etapas que dependem de você", "warning")}
+      ${metricCard("E-mails classificados", events.length, "Histórico vinculado às vagas", "violet")}
+    </div>
+    <div class="returns-filter-bar">
+      <label>Buscar<input id="returnSearch" placeholder="vaga, empresa, assunto ou fonte"></label>
+      <label>Situação<select id="returnOutcome"><option value="all">Todas</option><option value="positive">Positivas</option><option value="negative">Negativas</option><option value="waiting">Sem retorno</option><option value="action">Ação necessária</option></select></label>
+      <label>Fonte<select id="returnSource">${optionList(sources, "all", "Todas")}</select></label>
+      <label>Etapa<select id="returnStage"><option value="all">Todas</option><option value="1">1ª fase</option><option value="2">2ª fase</option><option value="3">3ª fase ou mais</option></select></label>
+    </div>
+    <section class="returns-section">
+      <div class="section-head"><div><span class="eyebrow">Por vaga</span><h3>Resultado de cada candidatura</h3></div><span id="returnApplicationsCount" class="data-caption"></span></div>
+      <div id="returnApplications" class="returns-grid"></div>
+    </section>
+    <section class="returns-section">
+      <div class="section-head"><div><span class="eyebrow">Histórico completo</span><h3>Mensagens classificadas pelo Gmail</h3></div><span id="returnEventsCount" class="data-caption"></span></div>
+      <div id="returnHistory" class="return-history"></div>
+    </section>
+  </section>`;
+
+  const applyReturnFilters = () => {
+    const query = document.querySelector("#returnSearch").value.trim().toLowerCase();
+    const outcome = document.querySelector("#returnOutcome").value;
+    const source = document.querySelector("#returnSource").value;
+    const stage = document.querySelector("#returnStage").value;
+    const matchesQuery = (row) => !query || [row.title, row.job_title, row.company, row.source, row.latest_subject, row.latest_excerpt, row.subject, row.excerpt].join(" ").toLowerCase().includes(query);
+    const visibleRows = rows.filter((row) => {
+      const state = applicationReturnState(row);
+      if (!matchesQuery(row)) return false;
+      if (source !== "all" && sourceName(row) !== source) return false;
+      if (outcome === "action" && !(Number(row.latest_requires_action || 0) === 1 || String(row.next_action || "").trim())) return false;
+      if (outcome !== "all" && outcome !== "action" && state.id !== outcome) return false;
+      if (stage !== "all" && (stage === "3" ? Number(row.pipeline_stage || 1) < 3 : Number(row.pipeline_stage || 1) !== Number(stage))) return false;
+      return true;
+    });
+    const visibleEvents = events.filter((row) => {
+      const state = emailEventState(row);
+      if (!matchesQuery(row)) return false;
+      if (source !== "all" && sourceName(row) !== source) return false;
+      if (outcome !== "all" && state.id !== outcome) return false;
+      if (stage !== "all" && (stage === "3" ? Number(row.pipeline_stage || 1) < 3 : Number(row.pipeline_stage || 1) !== Number(stage))) return false;
+      return true;
+    });
+    document.querySelector("#returnApplicationsCount").textContent = `${visibleRows.length} de ${rows.length}`;
+    document.querySelector("#returnEventsCount").textContent = `${visibleEvents.length} de ${events.length}`;
+    document.querySelector("#returnApplications").innerHTML = visibleRows.map(returnApplicationCard).join("") || `<div class="empty-state"><h3>Nenhuma candidatura neste filtro</h3><p>Ajuste os filtros ou atualize o Gmail para buscar novos retornos.</p></div>`;
+    document.querySelector("#returnHistory").innerHTML = visibleEvents.map(returnHistoryRow).join("") || `<div class="empty-mini">Nenhum e-mail classificado neste filtro.</div>`;
+  };
+
+  document.querySelectorAll("#returnSearch, #returnOutcome, #returnSource, #returnStage").forEach((element) => element.addEventListener("input", applyReturnFilters));
+  document.querySelector("#syncReturnsGmail").onclick = async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = "Lendo Gmail...";
+    try {
+      const result = await json("/api/gmail/sync", { method: "POST" });
+      toast(`${result.matched} retorno(s) vinculado(s) e ${result.jobsImported || 0} vaga(s) importada(s).`, "success");
+      await returnsPage();
+    } catch (error) {
+      toast(error.message, "error");
+      button.disabled = false;
+      button.textContent = "Atualizar Gmail";
+    }
+  };
+  applyReturnFilters();
 }
 
 function metricCard(label, value, detail, tone) {
@@ -1214,7 +1399,7 @@ function showInlineResult(selector, message) {
 function renderAutomationResult(data) {
   const actions = data.actions || [];
   const statusTone = (status) => {
-    if (["autofill_pronto", "auto_apply_pronto"].includes(status)) return "ready";
+    if (["autofill_pronto", "auto_apply_pronto", "linkedin_assistido"].includes(status)) return "ready";
     if (["precisa_informacao", "precisa_canal", "precisa_vaga_real", "bloqueada", "linkedin_manual"].includes(status)) return "warning";
     return "info";
   };
@@ -1236,12 +1421,13 @@ function renderAutomationResult(data) {
       const autofill = buildAutofillBookmarklet(Object.fromEntries(fields));
       return `<div class="autofill-pack">
         <div class="section-head">
-          <div><strong>Pacote de preenchimento #${escapeHtml(action.id || "")}</strong><small>Use no formulário oficial da vaga.</small></div>
+          <div><strong>Preenchimento inteligente #${escapeHtml(action.id || "")}</strong><small>Dados reais do perfil, prontos para o formulário oficial.</small></div>
           <div class="card-actions">
-            <button data-copy-autofill="${escapeHtml(autofill)}">Copiar preenchimento</button>
-            <a data-autofill-bookmarklet class="action primary-link" href="${escapeHtml(autofill)}" title="Arraste para a barra de favoritos">Arrastar: preencher formulário</a>
+            <button data-copy-autofill="${escapeHtml(autofill)}">Copiar comando</button>
+            <a data-autofill-bookmarklet class="action primary-link" href="${escapeHtml(autofill)}" title="Arraste para a barra de favoritos">Arraste: Preencher com Ápice</a>
           </div>
         </div>
+        <div class="autofill-guide"><strong>Como executar</strong><span>1. Arraste o botão para a barra de favoritos.</span><span>2. Abra a vaga oficial ou o Easy Apply.</span><span>3. Clique em “Preencher com Ápice” e revise os campos destacados.</span></div>
         <div class="field-copy-grid">${fields.map(([key, value]) => `<div class="field-copy-item">
           <span>${escapeHtml(key)}</span>
           <strong>${escapeHtml(value)}</strong>
@@ -1290,9 +1476,39 @@ function buildAiApplyBookmarklet() {
   return `javascript:(()=>{const u=encodeURIComponent(location.href);const t=encodeURIComponent(document.title||'');window.open('${target}'+u+'&aiTitle='+t+'&aiSource=bookmarklet','_blank','noopener');})()`;
 }
 
-function buildAutofillBookmarklet(fields) {
+function buildLegacyAutofillBookmarklet(fields) {
   const payload = encodeURIComponent(JSON.stringify(fields));
   return `javascript:(()=>{const f=JSON.parse(decodeURIComponent('${payload}'));const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'');const aliases={'Nome completo':['nome','name','full name','nome completo'],'E-mail':['email','e-mail','mail'],'Telefone':['telefone','phone','celular','whatsapp','mobile'],'LinkedIn':['linkedin','linked in'],'Cidade':['cidade','city'],'Estado':['estado','uf','state'],'País':['pais','country'],'Resumo profissional':['resumo','summary','sobre','objetivo','cover','apresentacao'],'Pretensão salarial':['salario','salary','pretensao','remuneracao'],'Disponibilidade':['disponibilidade','availability','inicio','start']};const labelFor=e=>{let t=[e.name,e.id,e.placeholder,e.getAttribute('aria-label')].join(' ');const id=e.id;if(id){const l=document.querySelector('label[for=\"'+CSS.escape(id)+'\"]');if(l)t+=' '+l.innerText}const p=e.closest('label');if(p)t+=' '+p.innerText;return norm(t)};let n=0;document.querySelectorAll('input,textarea,select').forEach(e=>{const text=labelFor(e);for(const [k,v] of Object.entries(f)){if(!v)continue;const keys=[k,...(aliases[k]||[])].map(norm);if(keys.some(a=>a&&text.includes(a))){if(e.tagName==='SELECT'){[...e.options].some(o=>{if(norm(o.text).includes(norm(v))||norm(o.value).includes(norm(v))){e.value=o.value;return true}return false})}else if(['checkbox','radio','file','submit','button','hidden'].includes(e.type)){}else{e.value=v}e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));e.style.outline='3px solid #55c29a';n++;break}}});alert('Career Hunter preencheu '+n+' campo(s). Revise antes de enviar.');})()`;
+}
+
+function buildAutofillBookmarklet(fields) {
+  const payload = encodeURIComponent(JSON.stringify(fields));
+  const aliases = {
+    "Nome completo": ["nome", "name", "full name", "nome completo"],
+    "E-mail": ["email", "e-mail", "mail"],
+    "Telefone": ["telefone", "phone", "celular", "whatsapp", "mobile"],
+    LinkedIn: ["linkedin", "linked in"],
+    Cidade: ["cidade", "city"],
+    Estado: ["estado", "uf", "state"],
+    País: ["pais", "country"],
+    "Resumo profissional": ["resumo", "summary", "sobre", "objetivo", "cover", "apresentacao"],
+    "Pretensão salarial": ["salario", "salary", "pretensao", "remuneracao"],
+    Disponibilidade: ["disponibilidade", "availability", "inicio", "start"],
+    "Disponibilidade de horário": ["horario", "schedule", "turno", "escala"],
+    CPF: ["cpf", "documento fiscal"],
+    RG: ["rg", "identidade"],
+    "Data de nascimento": ["nascimento", "birth date", "birthday"],
+    "Estado civil": ["estado civil", "marital status"],
+    Endereço: ["endereco", "address", "logradouro", "rua"],
+    Número: ["numero", "number"],
+    Complemento: ["complemento", "complement", "apto", "apartamento"],
+    Bairro: ["bairro", "district", "neighborhood"],
+    CEP: ["cep", "postal code", "zip code"],
+    "Meio de transporte": ["transporte", "transport", "locomocao"],
+    Inglês: ["ingles", "english"]
+  };
+  const aliasesPayload = encodeURIComponent(JSON.stringify(aliases));
+  return `javascript:(()=>{const f=JSON.parse(decodeURIComponent('${payload}'));const a=JSON.parse(decodeURIComponent('${aliasesPayload}'));const norm=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[\\u0300-\\u036f]/g,'');const labelFor=e=>{let t=[e.name,e.id,e.placeholder,e.getAttribute('aria-label')].join(' ');if(e.id){const l=document.querySelector('label[for="'+CSS.escape(e.id)+'"]');if(l)t+=' '+l.innerText}const p=e.closest('label');if(p)t+=' '+p.innerText;return norm(t)};const setValue=(e,v)=>{if(e.tagName==='SELECT'){const o=[...e.options].find(x=>norm(x.text).includes(norm(v))||norm(x.value).includes(norm(v)));if(o)e.value=o.value;return Boolean(o)}if(['checkbox','radio','file','submit','button','hidden'].includes(e.type))return false;const proto=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;const setter=Object.getOwnPropertyDescriptor(proto,'value')?.set;if(setter)setter.call(e,v);else e.value=v;return true};let n=0;document.querySelectorAll('input,textarea,select').forEach(e=>{const text=labelFor(e);for(const [k,v] of Object.entries(f)){if(!v)continue;const keys=[k,...(a[k]||[])].map(norm);if(keys.some(x=>x&&text.includes(x))&&setValue(e,v)){e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));e.style.outline='3px solid #55c29a';n++;break}}});alert('Ápice preencheu '+n+' campo(s). Revise os campos destacados antes de enviar.');})()`;
 }
 
 function fileToBase64(file) {
@@ -1757,7 +1973,6 @@ async function aiApplyPage(initialMessage = "", prefill = null) {
       <div><span class="eyebrow">IA Candidatura</span><h2>Assistente de candidatura</h2><p>A vaga abre no site oficial. O Ápice prepara seus dados, currículo e respostas sem quebrar a navegação.</p></div>
       <div class="toolbar-actions">
         <button id="backFromAiApply">Voltar</button>
-        <button data-tab="applications">Candidaturas</button>
       </div>
     </div>
     <div id="aiApplyResult" class="note ${initialMessage ? "" : "hidden"}">${initialMessage}</div>
@@ -1774,6 +1989,12 @@ async function aiApplyPage(initialMessage = "", prefill = null) {
         <div class="card-actions">
           <a id="openAiApplyExternal" class="action primary-link hidden" target="_blank" rel="noreferrer">Abrir vaga no site oficial</a>
           <button id="vaiIa" class="primary">Preparar com IA</button>
+        </div>
+        <div class="ai-capability-list">
+          <div><span>1</span><p><strong>Lê a vaga</strong><small>Compara requisitos, currículo e respostas já memorizadas.</small></p></div>
+          <div><span>2</span><p><strong>Monta o pacote</strong><small>Organiza dados pessoais, pretensão, disponibilidade, currículo e apresentação.</small></p></div>
+          <div><span>3</span><p><strong>Preenche no portal</strong><small>O favorito “Preencher com Ápice” funciona em formulários comuns e no LinkedIn Easy Apply.</small></p></div>
+          <div><span>4</span><p><strong>Aprende sem inventar</strong><small>Perguntas desconhecidas voltam ao painel e, depois da sua resposta, entram na memória.</small></p></div>
         </div>
         <div class="bookmarklet-box">
           <strong>Trazer vaga para o Ápice</strong>
@@ -1802,8 +2023,8 @@ async function aiApplyPage(initialMessage = "", prefill = null) {
         </div>
         <ol class="assistant-step-list">
           <li id="assistantStepOpen"><span>1</span><div><strong>Abrir o anúncio oficial</strong><small>Login, anexos e formulários funcionam na página original.</small></div></li>
-          <li id="assistantStepPrepare"><span>2</span><div><strong>Preparar com IA</strong><small>O agente organiza currículo, carta, respostas e campos do perfil.</small></div></li>
-          <li><span>3</span><div><strong>Revisar o preenchimento</strong><small>Confira campos sensíveis, perguntas específicas e anexos antes do envio.</small></div></li>
+          <li id="assistantStepPrepare"><span>2</span><div><strong>Preparar com IA</strong><small>O agente cruza o anúncio com seu currículo e gera o comando de preenchimento.</small></div></li>
+          <li><span>3</span><div><strong>Preencher na vaga</strong><small>No site oficial, execute “Preencher com Ápice” e confira os campos destacados.</small></div></li>
           <li><span>4</span><div><strong>Confirmar e acompanhar</strong><small>Depois do envio, registre a candidatura para monitorar retornos pelo Gmail.</small></div></li>
         </ol>
         <div class="launchpad-actions">
@@ -1812,7 +2033,7 @@ async function aiApplyPage(initialMessage = "", prefill = null) {
         </div>
         <div class="notice-mini">
           <strong>Por que abre em outra aba?</strong>
-          <small>Portais de emprego bloqueiam janelas incorporadas por segurança. Abrir a fonte oficial evita telas brancas, páginas cortadas e falhas de login.</small>
+          <small>Portais de emprego bloqueiam janelas incorporadas por segurança. Na aba oficial, login e Easy Apply continuam funcionando; o Ápice auxilia o preenchimento sem tentar ultrapassar CAPTCHA ou enviar informação falsa.</small>
         </div>
       </section>
     </div>
@@ -2560,8 +2781,9 @@ async function load(tab) {
     if (tab === "approved") return applications();
     if (tab === "informal") return informal();
     if (tab === "applications") return applications();
+    if (tab === "returns") return returnsPage();
     if (tab === "sources") return sourcesPage();
-    if (tab === "actions") return actionsPage();
+    if (tab === "actions") return returnsPage();
     if (tab === "aiApply") return aiApplyPage();
     if (tab === "accounts") return accountsPage();
     if (["profile", "profiles", "resume", "settings"].includes(tab)) return settings();

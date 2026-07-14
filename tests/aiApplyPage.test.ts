@@ -9,4 +9,6 @@ test("IA Candidatura usa a fonte oficial sem iframe bloqueado", () => {
   assert.doesNotMatch(appSource, /<iframe[^>]+aiApplyFrame/i);
   assert.match(appSource, /Abrir vaga no site oficial/);
   assert.match(appSource, /Portais de emprego bloqueiam janelas incorporadas por segurança/);
+  assert.match(appSource, /Preencher com Ápice/);
+  assert.match(appSource, /LinkedIn Easy Apply/);
 });
