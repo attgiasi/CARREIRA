@@ -113,14 +113,31 @@ export function classifyRecruiterMessage(subject: string, body: string, snippet 
     "move forward with your application"
   ]);
   if (advanced || explicitThirdStage) {
+    const explicitInstruction = includesAny(text, [
+      "responda este e-mail",
+      "responda este email",
+      "responda até",
+      "responda ate",
+      "confirme sua participação",
+      "confirme sua participacao",
+      "confirme sua presença",
+      "confirme sua presenca",
+      "escolha um horário",
+      "escolha um horario",
+      "agende sua entrevista",
+      "preencha o formulário",
+      "preencha o formulario",
+      "envie os documentos",
+      "realize o teste"
+    ]);
     return {
       eventType: "advanced",
       outcome: "positiva",
       stage: explicitThirdStage ? 3 : 2,
-      requiresAction: true,
-      actionSummary: explicitThirdStage
-        ? "Abrir o retorno e confirmar as orientações da 3ª fase."
-        : "Abrir o retorno e confirmar as orientações da próxima fase.",
+      requiresAction: explicitInstruction,
+      actionSummary: explicitInstruction
+        ? "Abrir o retorno e concluir a orientação solicitada pelo recrutador."
+        : "Nenhuma ação solicitada; aguardar o contato da empresa.",
       confidence: 0.98
     };
   }
@@ -209,6 +226,56 @@ export function classifyRecruiterMessage(subject: string, body: string, snippet 
   }
 
   return { eventType: "other", outcome: "sem_retorno", stage: 1, requiresAction: false, actionSummary: "", confidence: 0 };
+}
+
+export function normalizeStoredRecruiterActions(db: CareerDatabase, userId: number): number {
+  const genericInfoJobsWhere = `
+    user_id = ?
+    AND event_type = 'advanced'
+    AND (
+      LOWER(COALESCE(sender_email, '')) LIKE '%infojobs%'
+      OR LOWER(COALESCE(source_platform, '')) LIKE '%infojobs%'
+    )
+    AND LOWER(COALESCE(subject, '')) LIKE '%avançou para a próxima fase%'
+    AND LOWER(COALESCE(action_summary, '')) LIKE 'abrir o retorno e confirmar%'
+  `;
+  const total = Number(db.query<Record<string, unknown>>(
+    `SELECT COUNT(*) AS total FROM recruiter_email_events WHERE ${genericInfoJobsWhere}`,
+    [userId]
+  )[0]?.total ?? 0);
+  if (!total) return 0;
+
+  db.run(
+    `UPDATE recruiter_email_events
+     SET requires_action = 0,
+         action_summary = 'Nenhuma ação solicitada; aguardar o contato da empresa.',
+         updated_at = CURRENT_TIMESTAMP
+     WHERE ${genericInfoJobsWhere}`,
+    [userId]
+  );
+  db.run(
+    `UPDATE applications AS a
+     SET next_action = '', updated_at = CURRENT_TIMESTAMP
+     WHERE a.user_id = ?
+       AND EXISTS (
+         SELECT 1
+         FROM recruiter_email_events e
+         WHERE e.application_id = a.id
+           AND e.user_id = a.user_id
+           AND e.event_type = 'advanced'
+           AND e.requires_action = 0
+           AND LOWER(COALESCE(e.action_summary, '')) LIKE 'nenhuma ação solicitada%'
+           AND e.id = (
+             SELECT latest.id
+             FROM recruiter_email_events latest
+             WHERE latest.application_id = a.id AND latest.user_id = a.user_id
+             ORDER BY datetime(latest.received_at) DESC, latest.id DESC
+             LIMIT 1
+           )
+       )`,
+    [userId]
+  );
+  return total;
 }
 
 function decodeBase64Url(value: string): string {
@@ -650,7 +717,23 @@ export function getRecruiterPipelineMetrics(db: CareerDatabase, userId: number):
   const selected = Number(db.query<Record<string, unknown>>(`SELECT COUNT(*) as total FROM applications a WHERE a.user_id = ? AND ${ACTUAL_APPLICATION_SQL} AND COALESCE(a.pipeline_stage, 1) >= 2 AND COALESCE(a.pipeline_outcome, '') <> 'negativa'`, [userId])[0]?.total ?? 0);
   const rejected = Number(db.query<Record<string, unknown>>(`SELECT COUNT(*) as total FROM applications a WHERE a.user_id = ? AND ${ACTUAL_APPLICATION_SQL} AND a.pipeline_outcome = 'negativa'`, [userId])[0]?.total ?? 0);
   const stage3 = Number(db.query<Record<string, unknown>>(`SELECT COUNT(*) as total FROM applications a WHERE a.user_id = ? AND ${ACTUAL_APPLICATION_SQL} AND COALESCE(a.pipeline_stage, 1) >= 3 AND COALESCE(a.pipeline_outcome, '') <> 'negativa'`, [userId])[0]?.total ?? 0);
-  const actions = Number(db.query<Record<string, unknown>>(`SELECT COUNT(*) as total FROM applications a WHERE a.user_id = ? AND ${ACTUAL_APPLICATION_SQL} AND TRIM(COALESCE(a.next_action, '')) <> '' AND COALESCE(a.pipeline_outcome, '') <> 'negativa'`, [userId])[0]?.total ?? 0);
+  const actions = Number(db.query<Record<string, unknown>>(`
+    SELECT COUNT(*) as total
+    FROM recruiter_email_events e
+    JOIN applications a ON a.id = e.application_id
+    WHERE e.user_id = ?
+      AND a.user_id = ?
+      AND ${ACTUAL_APPLICATION_SQL}
+      AND e.requires_action = 1
+      AND COALESCE(a.pipeline_outcome, '') <> 'negativa'
+      AND e.id = (
+        SELECT latest.id
+        FROM recruiter_email_events latest
+        WHERE latest.user_id = e.user_id AND latest.application_id = e.application_id
+        ORDER BY datetime(latest.received_at) DESC, latest.id DESC
+        LIMIT 1
+      )
+  `, [userId, userId])[0]?.total ?? 0);
   const pending = Math.max(0, actual - selected - rejected);
   const stage2Negative = Number(db.query<Record<string, unknown>>(`SELECT COUNT(*) as total FROM applications a WHERE a.user_id = ? AND ${ACTUAL_APPLICATION_SQL} AND COALESCE(a.pipeline_stage, 1) = 2 AND a.pipeline_outcome = 'negativa'`, [userId])[0]?.total ?? 0);
   const stage3Negative = Number(db.query<Record<string, unknown>>(`SELECT COUNT(*) as total FROM applications a WHERE a.user_id = ? AND ${ACTUAL_APPLICATION_SQL} AND COALESCE(a.pipeline_stage, 1) >= 3 AND a.pipeline_outcome = 'negativa'`, [userId])[0]?.total ?? 0);

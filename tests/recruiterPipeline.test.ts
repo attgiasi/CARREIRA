@@ -12,13 +12,22 @@ test("classifica recusa antes de interpretar a menção à próxima fase", () =>
   assert.equal(result.outcome, "negativa");
 });
 
-test("classifica avanço para a segunda fase", () => {
+test("classifica avanço sem inventar ação para o candidato", () => {
   const result = classifyRecruiterMessage(
     "Você avançou para a próxima fase da vaga de Gerente de Restaurante",
     "Estamos felizes em contar que você passou para a próxima etapa."
   );
   assert.equal(result.eventType, "advanced");
   assert.equal(result.stage, 2);
+  assert.equal(result.requiresAction, false);
+});
+
+test("marca ação somente quando o recrutador pede uma resposta objetiva", () => {
+  const result = classifyRecruiterMessage(
+    "Você avançou para a próxima fase",
+    "Confirme sua participação e responda este e-mail até amanhã."
+  );
+  assert.equal(result.eventType, "advanced");
   assert.equal(result.requiresAction, true);
 });
 

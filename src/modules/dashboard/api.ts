@@ -16,7 +16,7 @@ import { CandidateProfile, decideAutomation, MemoryAnswer } from "../application
 import { AgentSettings } from "../../types.js";
 import { buildSalaryAnalytics, parseBaseSalary, sourceDisplayName } from "./analytics.js";
 import { getGmailConnectionStatus, gmailProtectedRetryAfter, gmailRetryAfterFromError, isGmailRateLimitError } from "../gmail/gmailClient.js";
-import { ACTUAL_APPLICATION_SQL, getRecruiterPipelineMetrics } from "../gmail/recruiterReplyReader.js";
+import { ACTUAL_APPLICATION_SQL, getRecruiterPipelineMetrics, normalizeStoredRecruiterActions } from "../gmail/recruiterReplyReader.js";
 import { syncCareerGmail } from "../gmail/careerGmailSync.js";
 import {
   clearSessionCookie,
@@ -505,6 +505,7 @@ apiRouter.use(requireAuth);
 apiRouter.get("/summary", async (req, res) => {
   const db = await CareerDatabase.open();
   const userId = currentUserId(req);
+  normalizeStoredRecruiterActions(db, userId);
   ensureDefaultCandidateProfile(db, userId);
   const jobs = db.query("SELECT COUNT(*) as total FROM jobs WHERE user_id = ?", [userId])[0]?.total ?? 0;
   const availableJobs = db.query(`
@@ -577,17 +578,29 @@ apiRouter.get("/summary", async (req, res) => {
     LIMIT 8
   `, [userId]);
   const recruiterActions = db.query<Record<string, unknown>>(`
-    SELECT a.id as application_id, a.next_action, a.last_recruiter_email_at,
-           a.pipeline_stage, j.id as job_id, j.title, j.company, j.source, j.url
+    WITH ranked_actions AS (
+      SELECT e.*,
+             ROW_NUMBER() OVER (
+               PARTITION BY e.application_id
+               ORDER BY datetime(e.received_at) DESC, e.id DESC
+             ) as event_rank
+      FROM recruiter_email_events e
+      WHERE e.user_id = ?
+    )
+    SELECT a.id as application_id, latest.action_summary as next_action,
+           latest.received_at as last_recruiter_email_at, a.pipeline_stage,
+           j.id as job_id, j.title, j.company, j.source,
+           COALESCE(NULLIF(latest.action_url, ''), j.url) as url
     FROM applications a
     LEFT JOIN jobs j ON j.id = a.job_id
+    JOIN ranked_actions latest ON latest.application_id = a.id AND latest.event_rank = 1
     WHERE a.user_id = ?
       AND ${ACTUAL_APPLICATION_SQL}
-      AND TRIM(COALESCE(a.next_action, '')) <> ''
+      AND latest.requires_action = 1
       AND COALESCE(a.pipeline_outcome, '') <> 'negativa'
-    ORDER BY datetime(a.last_recruiter_email_at) DESC
+    ORDER BY datetime(latest.received_at) DESC
     LIMIT 8
-  `, [userId]);
+  `, [userId, userId]);
   const lastGmailSync = db.query<Record<string, unknown>>(`
     SELECT started_at, completed_at, status, scanned_messages, matched_messages, inserted_events, error_message
     FROM gmail_sync_runs
@@ -830,7 +843,14 @@ apiRouter.get("/sources", async (req, res) => {
   const userId = currentUserId(req);
   const jobsBySource = db.query<Record<string, unknown>>("SELECT id, source, salary, fit_score FROM jobs WHERE user_id = ?", [userId]);
   const applicationsBySource = db.query<Record<string, unknown>>(`
-    SELECT a.id, a.pipeline_stage, a.pipeline_outcome, a.next_action,
+    SELECT a.id, a.pipeline_stage, a.pipeline_outcome,
+           COALESCE((
+             SELECT e.requires_action
+             FROM recruiter_email_events e
+             WHERE e.user_id = a.user_id AND e.application_id = a.id
+             ORDER BY datetime(e.received_at) DESC, e.id DESC
+             LIMIT 1
+           ), 0) as latest_requires_action,
            COALESCE(a.source_platform, j.source) as source, j.salary
     FROM applications a
     LEFT JOIN jobs j ON j.id = a.job_id
@@ -869,7 +889,7 @@ apiRouter.get("/sources", async (req, res) => {
     if (stage >= 2 && outcome !== "negativa") item.selected = Number(item.selected) + 1;
     else if (outcome === "negativa") item.rejected = Number(item.rejected) + 1;
     else item.pending = Number(item.pending) + 1;
-    if (String(row.next_action ?? "").trim() && outcome !== "negativa") item.actions = Number(item.actions) + 1;
+    if (Number(row.latest_requires_action ?? 0) === 1 && outcome !== "negativa") item.actions = Number(item.actions) + 1;
   }
   const sources = [...metrics.values()].map((item) => ({
     ...item,

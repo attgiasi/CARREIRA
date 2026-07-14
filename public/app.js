@@ -672,6 +672,18 @@ function formatDate(value) {
   return date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
 }
 
+function formatDayMonth(value) {
+  if (!value) return "--/--";
+  const raw = String(value).trim();
+  const isoDate = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoDate) return `${isoDate[3]}/${isoDate[2]}`;
+  const brazilianDate = raw.match(/^(\d{2})\/(\d{2})/);
+  if (brazilianDate) return `${brazilianDate[1]}/${brazilianDate[2]}`;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo" });
+}
+
 function protectGmailSyncButton(button, gmail, readyLabel) {
   if (!button || !gmail?.rateLimited) return;
   const retryAt = Date.parse(gmail.retryAfter || "");
@@ -957,8 +969,8 @@ async function dashboard() {
   const gmailPillLabel = gmailLimited ? "conectado · em pausa" : gmail.connected ? "conectado" : "desconectado";
   const gmailAccountLabel = gmail.email || (gmail.connected ? "Conta Google autorizada" : "Conta não conectada");
   const gmailStatusDetail = gmailLimited
-    ? `${gmail.warning || "O Google limitou temporariamente as leituras."}${gmail.retryAfter ? ` Nova tentativa após ${formatDate(gmail.retryAfter)}.` : ""}`
-    : `${gmail.lastSync?.completed_at ? `Última leitura: ${formatDate(gmail.lastSync.completed_at)}` : "Nenhuma leitura registrada"} · atualização automática a cada ${gmail.automaticEveryMinutes || 30} min`;
+    ? `${gmail.warning || "O Google limitou temporariamente as leituras."}${gmail.retryAfter ? ` Nova tentativa em ${formatDayMonth(gmail.retryAfter)}.` : ""}`
+    : `${gmail.lastSync?.completed_at ? `Última leitura: ${formatDayMonth(gmail.lastSync.completed_at)}` : "Nenhuma leitura registrada"} · atualização automática a cada ${gmail.automaticEveryMinutes || 30} min`;
 
   app.innerHTML = `<div class="executive-head">
     <div>
@@ -974,7 +986,7 @@ async function dashboard() {
   </div>
 
   <div class="kpi-grid executive-kpis">
-    ${metricCard("Candidaturas reais", pipeline.actual, `Último registro: ${formatDate(summary.lastAppliedAt)}`, "blue")}
+    ${metricCard("Candidaturas reais", pipeline.actual, `Último registro: ${formatDayMonth(summary.lastAppliedAt)}`, "blue")}
     ${metricCard("Selecionado", pipeline.selected, "Avançaram para outra fase", "success")}
     ${metricCard("Não selecionado", pipeline.rejected, "Retornos negativos confirmados", "danger")}
     ${metricCard("Sem retorno", pipeline.pending, "Aguardando resposta", "neutral")}
@@ -1110,9 +1122,9 @@ function activityPulseChart(rows) {
   const max = Math.max(1, ...rows.flatMap((row) => [Number(row.applications || 0), Number(row.replies || 0)]));
   return `<div class="activity-pulse">
     <div class="activity-legend"><span><i class="application"></i>Candidaturas</span><span><i class="reply"></i>Respostas</span></div>
-    <div class="activity-bars">${rows.map((row) => `<div class="activity-day" title="${escapeHtml(formatDate(row.day))}: ${row.applications || 0} candidatura(s), ${row.replies || 0} resposta(s)">
+    <div class="activity-bars">${rows.map((row) => `<div class="activity-day" title="${escapeHtml(formatDayMonth(row.day))}: ${row.applications || 0} candidatura(s), ${row.replies || 0} resposta(s)">
       <div><i class="application" style="height:${Math.max(Number(row.applications) ? 8 : 2, Math.round((Number(row.applications || 0) / max) * 100))}%"></i><i class="reply" style="height:${Math.max(Number(row.replies) ? 8 : 2, Math.round((Number(row.replies || 0) / max) * 100))}%"></i></div>
-      <small>${escapeHtml(String(row.day || "").slice(5).replace("-", "/"))}</small>
+      <small>${escapeHtml(formatDayMonth(row.day))}</small>
     </div>`).join("")}</div>
   </div>`;
 }
@@ -1136,7 +1148,7 @@ function recruiterEventRow(row) {
   const [label, tone] = labels[row.event_type] || ["Atualização", "waiting"];
   return `<div class="decision-row">
     <span class="decision-mark ${tone}"></span>
-    <div><strong>${escapeHtml(row.title || row.job_title || "Vaga")}</strong><small>${escapeHtml(row.company || "Empresa")} · ${formatDate(row.received_at)}</small></div>
+    <div><strong>${escapeHtml(row.title || row.job_title || "Vaga")}</strong><small>${escapeHtml(row.company || "Empresa")} · ${formatDayMonth(row.received_at)}</small></div>
     <span class="outcome-label ${tone}">${label}</span>
     ${row.action_url ? `<a class="action" href="${escapeHtml(row.action_url)}" target="_blank" rel="noreferrer">E-mail</a>` : ""}
   </div>`;
@@ -1172,7 +1184,7 @@ function emailEventState(row) {
 function returnApplicationCard(row) {
   const state = applicationReturnState(row);
   const emailUrl = gmailMessageUrl(row);
-  const needsAction = Number(row.latest_requires_action || 0) === 1 || String(row.next_action || "").trim();
+  const needsAction = Number(row.latest_requires_action || 0) === 1;
   return `<article class="return-card">
     <div class="return-card-head">
       <div><span class="eyebrow">${escapeHtml(sourceName(row))}</span><h3>${escapeHtml(row.title || "Vaga")}</h3><p>${escapeHtml(row.company || "Empresa a confirmar")}</p></div>
@@ -1266,7 +1278,7 @@ async function returnsPage(initialMessage = "") {
       const state = applicationReturnState(row);
       if (!matchesQuery(row)) return false;
       if (source !== "all" && sourceName(row) !== source) return false;
-      if (outcome === "action" && !(Number(row.latest_requires_action || 0) === 1 || String(row.next_action || "").trim())) return false;
+      if (outcome === "action" && Number(row.latest_requires_action || 0) !== 1) return false;
       if (outcome !== "all" && outcome !== "action" && state.id !== outcome) return false;
       if (stage !== "all" && (stage === "3" ? Number(row.pipeline_stage || 1) < 3 : Number(row.pipeline_stage || 1) !== Number(stage))) return false;
       return true;
@@ -2413,6 +2425,10 @@ async function settings() {
   const sources = getPath(data, "sources", {});
   const tracks = getPath(data, "careerTracks", {});
   const informalWork = getPath(data, "informalWork", {});
+  const automationEnabled = Boolean(data.agent.enabled)
+    && !Boolean(data.agent.paused)
+    && !Boolean(data.agent.dryRun)
+    && Boolean(getPath(data, "applications.autoApply"));
 
   app.innerHTML = `<div class="settings-shell">
     <aside class="settings-nav">
@@ -2424,14 +2440,15 @@ async function settings() {
       <button data-jump="salario">Salário</button>
       <button data-jump="freelas">Freelas</button>
       <button data-jump="fontes">Fontes</button>
-      <button data-jump="seguranca">Segurança</button>
+      <button data-jump="automacao">Automação</button>
+      <button data-jump="seguranca">Proteções</button>
       <button data-jump="codigo">Sincronizar</button>
     </aside>
 
     <section class="settings-panel">
       <div class="settings-head">
-        <div><span class="eyebrow">Meu Perfil</span><h2>Currículo, preferências e IA</h2><p>Um lugar só para seus dados, currículo, vagas desejadas, fontes de busca e chaves de IA.</p></div>
-        <div class="save-box"><button id="saveVisualSettings" class="primary">Salvar meu perfil</button><span id="saveStatus"></span></div>
+        <div><span class="eyebrow">Configurações do Ápice</span><h2>Perfil, busca e automação em um só lugar</h2><p>Suas escolhas ficam organizadas por objetivo e são refletidas no código de configuração.</p></div>
+        <div class="save-box"><button id="saveVisualSettings" class="primary">Salvar configurações</button><span id="saveStatus"></span></div>
       </div>
 
       <div class="config-section" id="perfil">
@@ -2554,8 +2571,18 @@ async function settings() {
         <div class="note"><strong>WhatsApp:</strong> monitoramento em tempo real exige API oficial ou encaminhamento seguro. O caminho seguro é colar/exportar mensagens em <code>data/whatsapp-vagas.txt</code> e rodar Buscar vagas.</div>
       </div>
 
-      <div class="config-section" id="seguranca">
-        <h3>Estratégia e segurança</h3>
+      <div class="config-section" id="automacao">
+        <div class="automation-overview">
+          <div>
+            <span class="eyebrow">Operação</span>
+            <h3>Automação de candidaturas</h3>
+            <p>O Ápice prepara e envia somente por canais compatíveis. Login, CAPTCHA, SMS e declarações sensíveis continuam sob seu controle.</p>
+          </div>
+          <div class="automation-control">
+            <span class="automation-state ${automationEnabled ? "active" : "assisted"}">${automationEnabled ? "Automação permitida ativa" : "Modo assistido"}</span>
+            <button id="enableAllowedAutomation" class="primary">${automationEnabled ? "Automação configurada" : "Ativar automação permitida"}</button>
+          </div>
+        </div>
         <div class="form-grid">
           ${numberInput("Máximo de vagas por rodada", "agent.maxJobsPerRun", data.agent.maxJobsPerRun)}
           ${numberInput("Máximo de candidaturas por dia", "strategy.maxApplicationsPerDay", data.strategy.maxApplicationsPerDay)}
@@ -2571,9 +2598,21 @@ async function settings() {
           ${settingToggle("Enviar quando for permitido", "applications.autoApplyWhenAllowed", getPath(data, "applications.autoApplyWhenAllowed"), "Enviar apenas onde houver canal seguro e permitido pela plataforma.")}
           ${settingToggle("Preencher formulários", "applications.autoFillFormsWhenAllowed", getPath(data, "applications.autoFillFormsWhenAllowed"), "Monta respostas e campos para formulário oficial da vaga.")}
           ${settingToggle("Perguntar e memorizar", "applications.askAndRememberMissingFields", getPath(data, "applications.askAndRememberMissingFields"), "Quando faltar informação, pergunta uma vez e salva para futuras vagas.")}
+          ${settingToggle("Pedir aprovação antes de enviar", "applications.requireApprovalBeforeApply", getPath(data, "applications.requireApprovalBeforeApply"), "Quando ativo, a candidatura fica pronta e aguarda sua confirmação final.")}
+          ${settingToggle("Pedir confirmação para e-mail", "applications.requireApprovalBeforeSendingEmail", getPath(data, "applications.requireApprovalBeforeSendingEmail"), "Quando ativo, o Ápice cria o e-mail, mas só envia depois da sua confirmação.")}
           ${settingToggle("LinkedIn só busca", "applications.allowLinkedInSearchOnly", getPath(data, "applications.allowLinkedInSearchOnly"), "Encontra vagas no LinkedIn, mas você abre e se candidata manualmente.")}
           ${settingToggle("APIs oficiais", "applications.allowQuickApplyAPIs", getPath(data, "applications.allowQuickApplyAPIs"), "Use apenas com integração oficial/permitida pela plataforma.")}
           ${settingToggle("Autofill no navegador", "applications.allowBrowserAutofill", getPath(data, "applications.allowBrowserAutofill"), "Ajuda a preencher, mas não burla login, CAPTCHA ou regras de site.")}
+        </div>
+      </div>
+
+      <div class="config-section" id="seguranca">
+        <h3>Proteções permanentes</h3>
+        <div class="safety-guard-grid">
+          <div><strong>Dados verdadeiros</strong><small>Experiência, formação, documentos e competências nunca são inventados.</small></div>
+          <div><strong>Contas protegidas</strong><small>Nenhuma rotina tenta contornar CAPTCHA, SMS, login ou bloqueios da plataforma.</small></div>
+          <div><strong>Rastreabilidade</strong><small>Só entra no total do dashboard o envio que tiver confirmação real.</small></div>
+          <div><strong>Pendências objetivas</strong><small>Uma ação sua só aparece quando o recrutador ou a plataforma solicitar algo.</small></div>
         </div>
       </div>
 
@@ -2642,11 +2681,29 @@ async function settings() {
     syncCode();
     await json("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: code.value });
     if (showFeedback) {
-      document.querySelector("#saveStatus").textContent = "Meu Perfil foi salvo.";
-      toast("Meu Perfil e preferências foram salvos.", "success");
+      document.querySelector("#saveStatus").textContent = "Configurações salvas.";
+      toast("Perfil, preferências e automação foram salvos.", "success");
     }
   }
   document.querySelector("#saveVisualSettings").onclick = () => saveCurrentSettings(true);
+  document.querySelector("#enableAllowedAutomation").onclick = async () => {
+    setPath(currentSettings, "agent.enabled", true);
+    setPath(currentSettings, "agent.paused", false);
+    setPath(currentSettings, "agent.dryRun", false);
+    setPath(currentSettings, "applications.prepareApplications", true);
+    setPath(currentSettings, "applications.autoApply", true);
+    setPath(currentSettings, "applications.autoApplyWhenAllowed", true);
+    setPath(currentSettings, "applications.autoFillFormsWhenAllowed", true);
+    setPath(currentSettings, "applications.askAndRememberMissingFields", true);
+    setPath(currentSettings, "applications.requireApprovalBeforeApply", false);
+    setPath(currentSettings, "applications.neverMassApplyWithoutApproval", false);
+    setPath(currentSettings, "applications.requireApprovalBeforeSendingEmail", false);
+    setPath(currentSettings, "applications.allowBrowserAutofill", true);
+    code.value = JSON.stringify(currentSettings, null, 2);
+    await json("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: code.value });
+    toast("Automação permitida ativada. Proteções de conta e veracidade continuam ligadas.", "success");
+    await settings();
+  };
 
   async function refreshPortableExport() {
     await saveCurrentSettings(false);

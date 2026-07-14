@@ -1396,6 +1396,63 @@ pre {
   margin-bottom: 14px;
 }
 
+.automation-overview {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.automation-overview p {
+  margin: 5px 0 0;
+  max-width: 760px;
+}
+
+.automation-state {
+  flex: 0 0 auto;
+  padding: 8px 11px;
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  background: var(--warning-bg);
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.automation-state.active {
+  border-color: var(--accent);
+  background: var(--success-bg);
+}
+
+.automation-control {
+  display: grid;
+  gap: 8px;
+  justify-items: stretch;
+}
+
+.safety-guard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.safety-guard-grid div {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.safety-guard-grid strong,
+.safety-guard-grid small {
+  display: block;
+}
+
+.safety-guard-grid small {
+  margin-top: 4px;
+}
+
 .resume-list,
 .env-status,
 .pill-cloud {
@@ -1815,6 +1872,12 @@ pre {
   .settings-nav {
     position: static;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .automation-overview,
+  .safety-guard-grid {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .hero-actions,
