@@ -8,7 +8,7 @@ function pitchFor(job: NormalizedJob): string {
     return "Minha experiência em atendimento, hospitalidade e operação me treinou para ouvir bem, entender contexto rapidamente, comunicar com clareza e transformar contato com cliente em experiência consistente.";
   }
   if (/backoffice|fraude|risco|opera[cç][aã]o|processo|erp|dados|controle/.test(text)) {
-    return "Tenho perfil organizado, analítico e cuidadoso com padrões, processos e informações. Minha vivência operacional me ajuda a enxergar impacto no cliente, prevenir falhas e sustentar rotina com responsabilidade.";
+    return "Minha experiência inclui padronização de processos, melhoria contínua do atendimento, controle operacional e comunicação clara, sempre com foco na experiência do cliente.";
   }
   if (/gerente|gest[aã]o|supervisor|coordena|lideran[cç]a|comercial|farmer|consultor/.test(text)) {
     return "Minha trajetória reúne liderança operacional, treinamento, atendimento consultivo e visão prática de negócio. Sei conduzir rotina, apoiar pessoas, priorizar problemas e manter padrão de entrega.";
@@ -19,13 +19,13 @@ function pitchFor(job: NormalizedJob): string {
 export function generateCoverLetter(job: NormalizedJob, settings: AgentSettings): string {
   return `Olá, tudo bem?
 
-Me chamo ${settings.profile.name}. Tenho mais de 12 anos de experiência em hospitalidade, coquetelaria, atendimento ao cliente, eventos, gestão de operação de bar, treinamento e padronização.
+Me chamo ${settings.profile.name}. Tenho sólida experiência em atendimento, hospitalidade e operação, com atuação em experiência do cliente, desenvolvimento de equipes, treinamento e padronização de processos.
 
 Tenho interesse na oportunidade de ${job.title} na ${job.company}, pois ela conversa diretamente com minha experiência prática em operação, atendimento, relacionamento e rotina de alta demanda.
 
 ${pitchFor(job)}
 
-Posso contribuir com postura profissional, comunicação clara, senso de dono, organização e foco em experiência do cliente. Tenho facilidade para aprender processos, representar bem a empresa e atuar com consistência em contextos que exigem atenção, agilidade e confiança.
+Posso contribuir com comunicação assertiva, escuta ativa, organização, resolução estratégica de demandas e foco em experiência do cliente. Tenho facilidade para aprender processos e atuar com consistência em contextos que exigem atenção e agilidade.
 
 Fico à disposição para conversar e mostrar como minha vivência pode gerar valor para a equipe.
 

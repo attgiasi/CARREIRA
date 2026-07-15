@@ -13,21 +13,21 @@ export function realExperienceKeywords(): string[] {
     "atendimento ao cliente",
     "experiência do cliente",
     "customer experience",
-    "customer success",
-    "sucesso do cliente",
     "eventos",
     "gestão de bar",
     "liderança operacional",
     "treinamento",
     "padronização",
     "operação",
-    "backoffice",
-    "análise operacional",
     "rotina de alta demanda",
     "controle de qualidade",
     "relacionamento com cliente",
-    "prevenção de falhas",
     "organização de processos",
-    "comunicação consultiva"
+    "comunicação assertiva",
+    "escuta ativa",
+    "controle de estoque",
+    "cmv",
+    "fornecedores",
+    "compras"
   ];
 }

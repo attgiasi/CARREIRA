@@ -1305,6 +1305,7 @@ apiRouter.post("/jobs/prepare-selected", async (req, res) => {
   }
   const db = await CareerDatabase.open();
   const settings = loadUserSettings(db, userId);
+  const profile = getActiveCandidateProfile(db, userId);
   const placeholders = ids.map(() => "?").join(",");
   const rows = db.query<Record<string, unknown>>(`SELECT * FROM jobs WHERE user_id = ? AND id IN (${placeholders})`, [userId, ...ids]);
   let prepared = 0;
@@ -1327,7 +1328,7 @@ apiRouter.post("/jobs/prepare-selected", async (req, res) => {
       description: String(row.description ?? ""),
       salary: String(row.salary ?? "")
     }, settings);
-      await enqueueApplication(buildApplicationPacket(jobId, job, settings), userId);
+    await enqueueApplication(buildApplicationPacket(jobId, job, settings, profile.resume_file), userId);
     prepared += 1;
   }
 
@@ -1384,7 +1385,7 @@ apiRouter.post("/jobs/approve-selected", async (req, res) => {
       description: String(row.description ?? ""),
       salary: String(row.salary ?? "")
     }, settings);
-    const packet = buildApplicationPacket(jobId, job, settings);
+    const packet = buildApplicationPacket(jobId, job, settings, profile.resume_file);
     db.run(
       `INSERT INTO applications (
         user_id, job_id, user_profile_id, application_status, cv_version, generated_resume_path,

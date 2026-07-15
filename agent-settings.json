@@ -22,12 +22,12 @@
     "phone": "",
     "linkedin": "",
     "maritalStatus": "Solteiro",
-    "summary": "Bartender sênior e profissional de hospitalidade com mais de 12 anos de experiência em bares, restaurantes, hotelaria, eventos e atendimento premium. Atua com coquetelaria clássica e autoral, liderança de bar, treinamento, padronização, estoque, fichas técnicas e experiência do cliente. Perfil preparado para posições de bartender, head bartender, chefia e supervisão de bar, consultoria de A&B e experiência do cliente em operações de alto padrão.",
+    "summary": "Profissional com sólida experiência em atendimento, hospitalidade e operação, reconhecido por alto desempenho, excelência na experiência do cliente e desenvolvimento de equipes. Destaque operacional com promoção para Instrutor de Treinamento, atuando na capacitação de colaboradores, padronização de processos e melhoria contínua do atendimento. Forte capacidade de escuta ativa, resolução estratégica de demandas, construção de relacionamento, comunicação assertiva, leitura de perfil e personalização da experiência.",
     "education": {
-      "highestLevel": "pos_graduacao",
+      "highestLevel": "superior_completo",
       "degrees": [
-        "Administração de Empresas",
-        "Pós-graduação em Gestão de Eventos e Cerimonial Público e Privado"
+        "Administração de Empresas - Unicastelo (2010-2013)",
+        "Gestão de eventos e cerimonial público e privado - UEPG (2017-2018)"
       ]
     },
     "driverLicense": {
@@ -240,6 +240,8 @@
     "preferCareerGrowth": true
   },
   "applications": {
+    "resumeSourcePolicy": "original_only",
+    "originalResumeFile": "resumes/CV-Hospitalidade.pdf",
     "prepareApplications": true,
     "createGmailDrafts": true,
     "autoApply": false,

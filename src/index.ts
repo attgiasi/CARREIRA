@@ -66,6 +66,14 @@ function runtimeUserId(): number {
   return Number(process.env.CAREER_HUNTER_USER_ID || 1);
 }
 
+function activeResumeFile(db: CareerDatabase, userId: number): string {
+  const row = db.query<Record<string, unknown>>(
+    "SELECT resume_file FROM candidate_profiles WHERE user_id = ? AND is_active = 1 ORDER BY id LIMIT 1",
+    [userId]
+  )[0];
+  return String(row?.resume_file ?? "");
+}
+
 function activeUserIds(db: CareerDatabase): number[] {
   const rows = db.query<Record<string, unknown>>("SELECT id FROM users WHERE status = 'active' ORDER BY id");
   if (rows.length === 0) return [runtimeUserId()];
@@ -115,6 +123,7 @@ export async function prepare(userId = runtimeUserId()): Promise<void> {
   ensureRuntimeFolders();
   const db = await CareerDatabase.open();
   const settings = settingsForUser(db, userId);
+  const resumeFile = activeResumeFile(db, userId);
   const rows = db.query<Record<string, unknown>>(
     "SELECT * FROM jobs WHERE user_id = ? AND fit_score >= ? AND risk_score < 60 AND id NOT IN (SELECT COALESCE(job_id, -1) FROM applications WHERE user_id = ?) ORDER BY fit_score DESC LIMIT ?",
     [userId, settings.strategy.onlyPrepareAboveScore, userId, settings.strategy.maxApplicationsPerDay]
@@ -131,7 +140,7 @@ export async function prepare(userId = runtimeUserId()): Promise<void> {
       salary: String(row.salary ?? "")
     }, settings);
     if (shouldPrepareApplication(job, settings)) {
-      await enqueueApplication(buildApplicationPacket(Number(row.id), job, settings), userId);
+      await enqueueApplication(buildApplicationPacket(Number(row.id), job, settings, resumeFile), userId);
     }
   }
   audit("index", "prepare", `Candidaturas preparadas: ${rows.length}.`);

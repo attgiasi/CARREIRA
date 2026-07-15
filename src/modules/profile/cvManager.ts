@@ -10,8 +10,8 @@ function existingResume(preferred: string, aliases: string[]): string {
   if (exact) return `resumes/${exact}`;
   const match = files.find((file) => aliases.some((alias) => file.toLowerCase().includes(alias)));
   if (match) return `resumes/${match}`;
-  const premium = files.find((file) => /(premium|master|principal|hospitalidade)/i.test(file) && /\.(pdf|docx?|md)$/i.test(file));
-  if (premium) return `resumes/${premium}`;
+  const original = files.find((file) => /(original|hospitalidade)/i.test(file) && /\.(pdf|docx?|md)$/i.test(file));
+  if (original) return `resumes/${original}`;
   const anyResume = files.find((file) => /\.(pdf|docx?|md)$/i.test(file) && file.toLowerCase() !== "readme.md");
   return anyResume ? `resumes/${anyResume}` : preferred;
 }
