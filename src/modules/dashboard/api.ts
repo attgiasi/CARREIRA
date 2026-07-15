@@ -286,6 +286,7 @@ function channelForApplication(row: Record<string, unknown>): { id: string; labe
   const url = String(row.url ?? "").toLowerCase();
   const text = [row.description, row.notes, row.application_status, source].join(" ").toLowerCase();
   if (url.startsWith("mailto:") || /\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/i.test(text)) return { id: "email", label: "Enviar por e-mail", priority: "media" };
+  if (url.includes("mail.google.com")) return { id: "email", label: "Abrir solicitação no Gmail", priority: "alta" };
   if (url.includes("wa.me") || url.includes("whatsapp") || text.includes("whatsapp")) return { id: "whatsapp", label: "Contato por WhatsApp", priority: "media" };
   if (url.startsWith("tel:") || text.includes("telefone") || text.includes("ligar")) return { id: "telefone", label: "Contato por telefone", priority: "media" };
   if (source.includes("linkedin") || url.includes("linkedin.com")) return { id: "manual", label: "Você faz no site", priority: "media" };

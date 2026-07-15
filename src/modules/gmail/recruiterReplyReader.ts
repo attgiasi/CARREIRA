@@ -166,6 +166,10 @@ export function classifyRecruiterMessage(subject: string, body: string, snippet 
   const needsAction = includesAny(text, [
     "complete seu cadastro",
     "complete a candidatura",
+    "conclua sua candidatura",
+    "concluir sua candidatura",
+    "retorne e conclua sua candidatura",
+    "rascunho de candidatura",
     "preencha o formulário",
     "preencha o formulario",
     "responda até",
@@ -362,11 +366,28 @@ function overlap(left: Set<string>, right: Set<string>): number {
   return common / Math.max(left.size, right.size);
 }
 
+export function recruiterApplicationMatchScore(
+  messageTitle: string,
+  messageCompany: string,
+  applicationTitle: string,
+  applicationCompany: string
+): number {
+  const titleScore = overlap(tokens(messageTitle), tokens(applicationTitle));
+  const companyTokens = tokens(messageCompany);
+  const companyScore = overlap(companyTokens, tokens(applicationCompany));
+  if (companyTokens.size > 0 && companyScore < 0.25) return 0;
+  return titleScore * 0.7 + companyScore * 0.3;
+}
+
 function messageSignals(message: ParsedMessage): { title: string; company: string } {
   const subjectTitle = message.subject.match(/vaga de\s+(.+?)(?:\.|$)/i)?.[1]?.trim() ?? "";
   const subjectCompany = message.subject.match(/empresa\s+(.+?)(?:\.|$)/i)?.[1]?.trim() ?? "";
   const bodyMatch = message.bodyText.match(/candidat(?:ou|ou-se).*?vaga de\s+(.+?)\s+da empresa\s+(.+?)(?:\.| e viemos|, e viemos)/i);
-  return { title: bodyMatch?.[1]?.trim() || subjectTitle, company: bodyMatch?.[2]?.trim() || subjectCompany };
+  const savedDraftMatch = message.bodyText.match(/(?:vaga|cargo)\s+(?:de\s+)?(.+?)\s+na\s+(?:equipe|empresa)\s+(.+?)(?:\.|!|$)/i);
+  return {
+    title: bodyMatch?.[1]?.trim() || savedDraftMatch?.[1]?.trim() || subjectTitle,
+    company: bodyMatch?.[2]?.trim() || savedDraftMatch?.[2]?.trim() || subjectCompany
+  };
 }
 
 function matchApplication(message: ParsedMessage, applications: ApplicationCandidate[]): { application: ApplicationCandidate | null; confidence: number } {
@@ -381,9 +402,12 @@ function matchApplication(message: ParsedMessage, applications: ApplicationCandi
   let best: ApplicationCandidate | null = null;
   let bestScore = 0;
   for (const item of applications) {
-    const titleScore = overlap(titleTokens, tokens(String(item.title ?? "")));
-    const companyScore = overlap(companyTokens, tokens(String(item.company ?? "")));
-    const score = titleScore * 0.7 + companyScore * 0.3;
+    const score = recruiterApplicationMatchScore(
+      [...titleTokens].join(" "),
+      [...companyTokens].join(" "),
+      String(item.title ?? ""),
+      String(item.company ?? "")
+    );
     if (score > bestScore) {
       best = item;
       bestScore = score;
@@ -399,6 +423,10 @@ function sourceFromMessage(message: ParsedMessage): string {
   if (text.includes("indeed")) return "Indeed";
   if (text.includes("gupy")) return "Gupy";
   if (text.includes("vagas.com")) return "Vagas.com";
+  if (text.includes("hilton")) return "Hilton";
+  if (text.includes("marriott")) return "Marriott";
+  if (text.includes("smartrecruiters")) return "SmartRecruiters";
+  if (text.includes("pandape")) return "Pandapé";
   return message.senderName || message.senderEmail || "Gmail";
 }
 
@@ -415,33 +443,46 @@ function directVacancyUrl(message: ParsedMessage, id: string): string {
   }
 }
 
-function createApplicationFromDecision(
+function createApplicationFromRecruiterMessage(
   db: CareerDatabase,
   userId: number,
   message: ParsedMessage,
   classification: RecruiterClassification
 ): ApplicationCandidate | null {
-  if (!["rejection", "advanced", "interview", "offer"].includes(classification.eventType)) return null;
-  const id = vacancyIds(message)[0];
+  const pendingAction = classification.eventType === "action_required";
+  if (!pendingAction && !["rejection", "advanced", "interview", "offer"].includes(classification.eventType)) return null;
+  const vacancyId = vacancyIds(message)[0] ?? "";
   const signals = messageSignals(message);
-  const url = id ? directVacancyUrl(message, id) : "";
-  if (!id || !url || !signals.title) return null;
+  const directUrl = vacancyId ? directVacancyUrl(message, vacancyId) : "";
+  const url = directUrl || (pendingAction ? `https://mail.google.com/mail/u/0/#all/${message.id}` : "");
+  if (!url || !signals.title) return null;
   const source = sourceFromMessage(message);
-  const externalId = `gmail-confirmed-${source.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${id}`;
+  const sourceId = source.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const externalId = `gmail-${pendingAction ? "action" : "confirmed"}-${sourceId}-${vacancyId || message.id}`;
+  const company = signals.company || source || "Empresa identificada pelo Gmail";
+  const jobStatus = pendingAction ? "Ação necessária" : "Candidatada";
+  const description = pendingAction
+    ? "Candidatura iniciada no site da empresa, mas ainda não enviada. O Gmail solicitou a conclusão do cadastro."
+    : "Candidatura confirmada por retorno do recrutador no Gmail.";
   db.run(
     `INSERT OR IGNORE INTO jobs (
       user_id, external_id, title, company, location, source, url, description, salary,
       work_model, fit_score, hire_chance_score, job_quality_score, risk_score, status, raw_json
-    ) VALUES (?, ?, ?, ?, 'A confirmar', ?, ?, ?, 'Não informado', 'A confirmar', 70, 50, 65, 10, 'Candidatada', ?)`,
+    ) VALUES (?, ?, ?, ?, 'A confirmar', ?, ?, ?, 'Não informado', 'A confirmar', 70, 50, 65, 10, ?, ?)`,
     [
       userId,
       externalId,
       signals.title,
-      signals.company || "Empresa identificada pelo Gmail",
+      company,
       source,
       url,
-      "Candidatura confirmada por retorno do recrutador no Gmail.",
-      JSON.stringify({ importedFrom: "gmail_recruiter_decision", gmailMessageId: message.id, vacancyId: id })
+      description,
+      jobStatus,
+      JSON.stringify({
+        importedFrom: pendingAction ? "gmail_action_required" : "gmail_recruiter_decision",
+        gmailMessageId: message.id,
+        vacancyId
+      })
     ]
   );
   const job = db.query<Record<string, unknown>>("SELECT id FROM jobs WHERE user_id = ? AND external_id = ? LIMIT 1", [userId, externalId])[0];
@@ -449,14 +490,25 @@ function createApplicationFromDecision(
   const jobId = Number(job.id);
   let application = db.query<Record<string, unknown>>("SELECT id FROM applications WHERE user_id = ? AND job_id = ? LIMIT 1", [userId, jobId])[0];
   if (!application) {
-    db.run(
-      `INSERT INTO applications (
-        user_id, job_id, created_at, updated_at, applied_at, application_status,
-        approval_status, sent_by_agent, source_platform, pipeline_stage, pipeline_outcome, recruiter_status
-      ) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, 'Candidatura confirmada pelo Gmail',
-        'confirmada_por_email', 0, ?, 1, 'sem_retorno', 'Retorno encontrado no Gmail')`,
-      [userId, jobId, message.receivedAt, source]
-    );
+    if (pendingAction) {
+      db.run(
+        `INSERT INTO applications (
+          user_id, job_id, created_at, updated_at, application_status, approval_status,
+          sent_by_agent, source_platform, pipeline_stage, pipeline_outcome, recruiter_status, next_action
+        ) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'Candidatura incompleta', 'aprovado_pelo_usuario',
+          0, ?, 1, 'sem_retorno', 'Ação encontrada no Gmail', ?)`,
+        [userId, jobId, source, classification.actionSummary]
+      );
+    } else {
+      db.run(
+        `INSERT INTO applications (
+          user_id, job_id, created_at, updated_at, applied_at, application_status,
+          approval_status, sent_by_agent, source_platform, pipeline_stage, pipeline_outcome, recruiter_status
+        ) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, 'Candidatura confirmada pelo Gmail',
+          'confirmada_por_email', 0, ?, 1, 'sem_retorno', 'Retorno encontrado no Gmail')`,
+        [userId, jobId, message.receivedAt, source]
+      );
+    }
     application = db.query<Record<string, unknown>>("SELECT id FROM applications WHERE user_id = ? AND job_id = ? LIMIT 1", [userId, jobId])[0];
   }
   if (!application) return null;
@@ -464,7 +516,7 @@ function createApplicationFromDecision(
     application_id: Number(application.id),
     job_id: jobId,
     title: signals.title,
-    company: signals.company || "Empresa identificada pelo Gmail",
+    company,
     source,
     url,
     external_id: externalId,
@@ -621,7 +673,7 @@ export async function syncRecruiterReplies(db: CareerDatabase, userId: number): 
       }
       let match = matchApplication(message, applications);
       if (!match.application) {
-        const created = createApplicationFromDecision(db, userId, message, classification);
+        const created = createApplicationFromRecruiterMessage(db, userId, message, classification);
         if (created) {
           applications.push(created);
           match = { application: created, confidence: 1 };

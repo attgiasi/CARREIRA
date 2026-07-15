@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { classifyRecruiterMessage } from "../src/modules/gmail/recruiterReplyReader.js";
+import { classifyRecruiterMessage, recruiterApplicationMatchScore } from "../src/modules/gmail/recruiterReplyReader.js";
 import { buildSalaryAnalytics, parseBaseSalary, sourceDisplayName } from "../src/modules/dashboard/analytics.js";
 
 test("classifica recusa antes de interpretar a menção à próxima fase", () => {
@@ -29,6 +29,20 @@ test("marca ação somente quando o recrutador pede uma resposta objetiva", () =
   );
   assert.equal(result.eventType, "advanced");
   assert.equal(result.requiresAction, true);
+});
+
+test("classifica rascunho de candidatura que precisa ser concluído", () => {
+  const result = classifyRecruiterMessage(
+    "Lembrete: seu pedido Hilton foi salvo",
+    "Seu rascunho de candidatura para a vaga Bartender foi salvo. Retorne e conclua sua candidatura."
+  );
+  assert.equal(result.eventType, "action_required");
+  assert.equal(result.requiresAction, true);
+});
+
+test("não associa vagas do mesmo cargo quando as empresas são diferentes", () => {
+  assert.equal(recruiterApplicationMatchScore("Bartender", "Hilton", "Bartender", "Roister"), 0);
+  assert.ok(recruiterApplicationMatchScore("Bartender", "Hilton", "Bartender", "Hilton Garden Inn") >= 0.7);
 });
 
 test("classifica proposta como etapa avançada", () => {
