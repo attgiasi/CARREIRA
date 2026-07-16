@@ -1,343 +1,162 @@
 # Ápice - Carreira inteligente
 
-Produto multiusuário para busca, análise, candidatura assistida e acompanhamento de processos seletivos. O Ápice cruza vagas, candidaturas realmente enviadas e retornos do Gmail em um painel único, sem misturar pesquisas, tentativas e links pendentes com candidaturas reais.
+O Ápice é um produto multiusuário para descobrir vagas reais, priorizar oportunidades, preparar candidaturas com IA e acompanhar respostas de recrutadores pelo Gmail.
 
-O objetivo não é sair se candidatando em massa. O agente funciona como assistente estratégico de carreira: encontra oportunidades, remove ruído, calcula risco, prepara materiais personalizados e coloca tudo em fila de aprovação.
+O painel foi desenhado para uso sem conhecimento de programação. As preferências são preenchidas com campos, seletores e botões; o JSON correspondente continua disponível para portabilidade e auditoria.
 
-## O que ele faz
+## Fluxo direto
 
-- Lê alertas de vagas do Gmail quando a API estiver configurada.
-- Classifica confirmações, recusas, entrevistas, avanços de fase, propostas e ações solicitadas por recrutadores.
-- Vincula cada retorno do Gmail à vaga pelo identificador do anúncio e, quando necessário, por cargo e empresa.
-- Importa links reais pelo painel ou por `data/manual-urls.txt`.
-- Importa mensagens copiadas/exportadas de grupos do WhatsApp em `data/whatsapp-vagas.txt`.
-- Mantém conectores preparados para Greenhouse, Lever, Gupy, RSS e páginas de carreira.
-- Usa Google Programmable Search, quando configurado, para pesquisar cargos no Google e importar apenas os links finais das vagas que aparecem nos resultados. Também cria fontes diretas em SINE/Emprega Curitiba, InfoJobs, 99jobs e agências de RH em Curitiba.
-- Normaliza vagas em um formato único.
-- Detecta modelo de trabalho, viagem, CNH, veículo próprio, escolaridade, senioridade, salário e trilha de carreira.
-- Calcula `Fit Score`, `Hire Chance Score`, `Job Quality Score` e `Risk Score`.
-- Detecta vagas ruins, suspeitas e golpe provável.
-- Analisa freelas, taxas, bicos, eventos e consultorias.
-- Calcula valor por hora e `Freela Score`.
-- Escolhe currículo base por trilha.
-- Gera currículo direcionado em Markdown sem inventar informações.
-- Gera carta de apresentação.
-- Coloca candidatura em fila de aprovação.
-- Gera resumo diário e radar semanal.
-- Mostra painel local em `http://localhost:8788` com navegação direta: Painel, Vagas, Aprovadas, Candidaturas, Fontes e Meu currículo.
-- Separa candidaturas reais, selecionadas, não selecionadas, sem retorno, 2ª fase, 3ª fase e ações pendentes.
-- Exibe distribuição do salário-base sem somar benefícios, bônus, gratificações ou comissões.
-- Compara volume, taxa de retorno, avanços e salários por fonte de recrutamento.
-- Mantém perfis de candidatura para pessoas diferentes.
-- Pergunta dados ausentes, salva na memória do perfil e reutiliza nas próximas candidaturas.
-- Separa vagas aprovadas em: candidatura por IA, candidatura manual, e-mail, telefone, WhatsApp e vagas que ainda precisam de link real.
-- Identifica possíveis vagas duplicadas entre fontes diferentes por link, ID de plataforma, cargo, empresa e local.
-- Tem uma aba **IA Candidatura** para colar o link real da vaga, importar, aprovar e preparar dados de preenchimento.
-- Inclui botão para candidatar novamente em vagas já trabalhadas.
-- Monitora candidaturas enviadas e registra quando uma vaga parece fechada ou indisponível.
-- Registra auditoria em JSONL com dados sensíveis mascarados.
+1. **Vagas:** o agente encontra, normaliza, classifica e remove duplicidades.
+2. **Candidaturas:** você aprova e autoriza as oportunidades escolhidas.
+3. **IA:** o Ápice prepara currículo, respostas e campos permitidos para cada vaga.
+4. **Acompanhamento:** somente envios confirmados entram no histórico; Gmail informa avanços, recusas e ações pendentes.
 
-## O que ele não faz
+Não existe uma etapa separada de “Aprovadas”. A autorização e o acompanhamento ficam juntos em **Candidaturas**.
 
-- Não automatiza LinkedIn.
-- Não burla CAPTCHA.
-- Não faz scraping agressivo.
-- Não envia e-mail sem aprovação quando a configuração exige.
-- Não confirma freela automaticamente.
-- Não inventa experiência, formação, idiomas, certificações, CNH ou dados pessoais.
-- Não paga taxa de cadastro nem aceita proposta que peça pagamento antecipado.
+## Recursos principais
 
-## Por que não automatiza LinkedIn
+- painel executivo com vagas, autorizações, candidaturas reais, avanços e pendências;
+- filtros por nota, salário-base, local, modelo de trabalho, fonte e disponibilidade;
+- links finais de anúncios, sem apresentar pesquisas do Google como se fossem vagas;
+- detecção de anúncios repetidos em fontes diferentes;
+- classificação por aderência, chance estimada, qualidade e risco;
+- perfil e currículo separados por usuário;
+- memória de respostas para campos recorrentes;
+- busca em Google Programmable Search, Gmail, ATS e fontes configuradas;
+- acompanhamento de confirmações, recusas, entrevistas, fases e propostas no Gmail;
+- modo claro e escuro, responsivo para computador e celular;
+- configuração visual com exportação pública sem dados pessoais e backup privado;
+- logs de auditoria com dados sensíveis mascarados;
+- execução local ou online com Docker, HTTPS e armazenamento persistente.
 
-LinkedIn tem regras rígidas contra automação não autorizada, scraping e ações robóticas em conta logada. Para proteger sua conta, reputação e dados, este projeto só usa alertas por e-mail e assistência manual para LinkedIn.
+## Como a IA ajuda na candidatura
 
-## Instalação
+Depois da sua autorização, o Ápice pode:
 
-Instale Node.js 20 ou superior. Depois:
+- escolher o currículo oficial do perfil;
+- preparar uma apresentação adaptada à vaga sem inventar experiência;
+- recuperar respostas já aprovadas da memória;
+- indicar dados ausentes e pedir somente o que realmente falta;
+- preencher campos em canais oficialmente permitidos;
+- abrir a página oficial e organizar o próximo passo;
+- registrar resultado, erro ou intervenção necessária.
+
+Login, CAPTCHA, SMS, aceite jurídico, pagamento e etapas que o portal exige do titular continuam sob controle da pessoa usuária. LinkedIn é assistido: o agente encontra a vaga e prepara os dados, mas não burla as regras da plataforma nem envia candidaturas de forma clandestina.
+
+## Rodar localmente
+
+Requisitos: Node.js 20 ou superior.
 
 ```bash
 npm install
-```
-
-Copie `.env.example` para `.env` e preencha apenas o que for usar:
-
-```bash
 cp .env.example .env
+npm run dashboard
 ```
 
 No Windows PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
+npm install
+npm run dashboard
 ```
 
-## Configuração principal
-
-Edite `agent-settings.json`. Nele você controla:
-
-- trilhas de carreira;
-- cargos buscados;
-- cidade, remoto e híbrido;
-- escolaridade aceita;
-- CNH e veículo próprio;
-- salário mínimo/desejado;
-- freelas, taxas e bicos;
-- fontes de busca;
-- `dryRun`;
-- limites de candidatura;
-- regras de segurança.
-
-Por padrão, `dryRun=true`, `autoApply=false` e aprovação é obrigatória.
-
-## Gmail e retornos de recrutadores
-
-O Ápice aceita a autorização OAuth já gerada pelo agente do Gmail. No computador local, crie um arquivo `.env.gmail` com os caminhos dos arquivos existentes:
-
-```env
-GOOGLE_CREDENTIALS_PATH=C:\caminho\do\agente-gmail\credentials.json
-GOOGLE_TOKEN_PATH=C:\caminho\do\agente-gmail\token.json
-```
-
-O arquivo `.env.gmail` é ignorado pelo Git. Para Render ou outro servidor online, prefira os secrets `GOOGLE_CREDENTIALS_JSON` e `GOOGLE_TOKEN_JSON` com o conteúdo completo dos dois arquivos JSON.
-
-Também continua disponível a configuração legada por refresh token:
-
-1. Crie um projeto no Google Cloud.
-2. Ative Gmail API.
-3. Crie credenciais OAuth.
-4. Gere um refresh token com escopo de leitura e criação de rascunhos.
-5. Preencha, se optar pelo modo legado:
-
-```env
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-GOOGLE_REDIRECT_URI=
-GMAIL_REFRESH_TOKEN=
-```
-
-Se não configurar Gmail, o sistema não quebra. A busca continua funcionando, mas os indicadores de avanço, recusa e fases não serão atualizados por e-mail.
-
-No painel, use `Atualizar retornos` para executar a leitura imediatamente. A rotina `npm run scan` também sincroniza o Gmail depois da busca de vagas.
-
-## Google Calendar
-
-Opcional. Ative com:
-
-```env
-GOOGLE_CALENDAR_ENABLED=true
-```
-
-A base já possui módulos para eventos de entrevista, follow-up e bloqueio de freela aprovado.
-
-## OpenAI e Gemini
-
-Configure a OpenAI:
-
-```env
-OPENAI_API_KEY=
-OPENAI_MODEL=gpt-4o-mini
-```
-
-Gemini fallback fica desligado por padrão:
-
-```env
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-1.5-flash
-```
-
-Mesmo sem IA externa, o projeto roda com regras determinísticas.
-
-Você também pode abrir o painel, ir em **Meu Perfil > IA e online** e salvar a chave/modelo sem editar arquivo manualmente. O painel grava no `.env`, que é ignorado pelo Git.
-
-## Google, SINE, InfoJobs, 99jobs e agências de RH
-
-O agente cria buscas direcionadas usando seus cargos e localidades configuradas. Sem chave do Google, ele não salva links de pesquisa do Google como vagas. Com Google Programmable Search configurado, ele importa automaticamente apenas links finais de resultados que parecem vagas reais.
-
-Para ativar importação automática via Google Programmable Search:
-
-```env
-GOOGLE_SEARCH_API_KEY=
-GOOGLE_SEARCH_ENGINE_ID=
-```
-
-Fontes incluídas:
-
-- Google Programmable Search somente para links finais de vagas que aparecem nos resultados;
-- SINE / Emprega Curitiba;
-- InfoJobs;
-- 99jobs;
-- LinkedIn Jobs apenas para encontrar vagas;
-- Indeed;
-- Vagas.com;
-- Catho;
-- NetVagas;
-- BNE;
-- Trabalha Brasil;
-- Glassdoor;
-- Empregos.com.br;
-- Sólides Jobs;
-- Abler;
-- Pandapé;
-- agências de RH em Curitiba;
-- páginas diretas cadastradas em `data/rh-agencies-curitiba.json`.
-
-O agente não faz scraping agressivo dessas plataformas. Quando o resultado for uma página de busca, abra o link, escolha a vaga real e cole o link específico no campo **Importar link real** ou na aba **IA Candidatura**. No LinkedIn, o agente encontra a vaga, mas a candidatura continua manual pela sua conta.
-
-## Perfis, memória e candidatura por IA
-
-Use a aba **Meu Perfil** para manter dados, currículo, preferências de vagas, fontes de busca, chaves de IA e memória de respostas em um lugar só.
-
-Fluxo principal:
-
-- `Vagas`: mostra oportunidades encontradas. Selecione e aprove as melhores.
-- `Aprovadas`: mostra o que já foi aprovado para candidatura. Divide em candidatura por IA, manual, e-mail, WhatsApp, telefone e precisa link real.
-- `Candidaturas`: mostra o que já foi enviado ou marcado como enviado.
-- `Candidaturas`: mostra o próximo passo de cada vaga, inclusive o que a IA pode fazer, o que você precisa fazer e o que já foi enviado.
-- `IA Candidatura`: cole um link real da vaga para importar, aprovar e preparar os campos.
-
-Se faltar telefone, disponibilidade, pretensão salarial ou outra resposta recorrente, o painel pergunta e salva em `answer_memory` para preencher automaticamente nas próximas vagas do mesmo perfil.
-
-O botão `Candidatar novamente` recoloca uma candidatura na fila sem apagar o histórico anterior.
-
-Envio automático real só deve acontecer quando houver canal oficial permitido, dados completos, sem CAPTCHA e com configuração explícita. O agente não faz stealth, não tenta ficar "indetectável" e não burla rastreamento, CAPTCHA ou bloqueios anti-bot. LinkedIn permanece manual por segurança. Antes de transmitir dados pessoais para um site externo, revise e confirme.
-
-## Currículos
-
-Coloque seus PDFs reais em:
-
-- `resumes/cv-hospitalidade.pdf`
-- `resumes/cv-atendimento.pdf`
-- `resumes/cv-prevencao.pdf`
-- `resumes/cv-gestao.pdf`
-
-Enquanto os PDFs não existirem, o agente ainda gera versões Markdown em `generated/resumes/`.
+Abra `http://localhost:8788` e crie a primeira conta administradora.
 
 ## Comandos
 
 ```bash
-npm run dev
-npm run build
-npm start
-npm run agent
 npm run dashboard
 npm run scan
+npm run scan-all
 npm run score
 npm run prepare-applications
+npm run prepare-all
 npm run daily-summary
 npm run weekly-radar
-npm run test
 npm run lint
+npm test
 ```
 
-`npm start` sobe o painel web. Para executar comandos do agente diretamente, use `npm run agent -- scan`, `npm run scan` ou os scripts específicos.
+## Configuração online
 
-## Fluxo recomendado
+GitHub armazena e versiona o código, mas não executa continuamente um servidor Node.js com SQLite. Para usar o mesmo painel de qualquer lugar, o projeto inclui implantação em uma VM Oracle Cloud Always Free:
 
-1. Configure `.env`.
-2. Ajuste `agent-settings.json`.
-3. Abra `npm run dashboard`.
-4. Rode `Buscar vagas`.
-5. Em `Vagas`, revise filtros, riscos e aprove as melhores.
-6. Em `Aprovadas`, escolha se você fará sozinho, por e-mail/telefone/WhatsApp ou por IA.
-7. Quando uma página de busca abrir uma vaga individual, cole o link oficial em **Importar link real** ou na aba **IA Candidatura**.
-8. Depois de enviar, marque como enviada. Ela vai para `Candidaturas`.
-9. Use `Verificar disponibilidade` em `Candidaturas` para monitorar se a vaga ainda parece aberta.
-10. Cole mensagens de grupos de vagas em `data/whatsapp-vagas.txt`, se quiser processar WhatsApp de forma segura.
+- `Dockerfile` com processo sem privilégios;
+- `deploy/oracle/compose.yaml` com volumes persistentes;
+- Caddy para HTTPS automático;
+- scripts de instalação, atualização e backup;
+- workflow opcional para atualizar a VM após cada envio ao GitHub.
 
-## WhatsApp
+O guia completo está em [`docs/ORACLE_ALWAYS_FREE.md`](docs/ORACLE_ALWAYS_FREE.md).
 
-O agente não entra automaticamente na sua conta do WhatsApp e não monitora grupos por WhatsApp Web. Isso evita risco de bloqueio, exposição de conta e automação indevida.
+## Variáveis protegidas
 
-Use o caminho seguro:
+Copie `.env.example` para `.env` no ambiente local. Na Oracle, use `deploy/oracle/.env.production`, que é ignorado pelo Git.
 
-1. Copie mensagens de grupos de vagas ou exporte a conversa.
-2. Cole em `data/whatsapp-vagas.txt`.
-3. Rode `npm run scan`.
-4. Veja as oportunidades no painel, com fonte `whatsapp` ou `whatsapp-informal`.
+Integrações opcionais:
 
-## Freelas, taxas e bicos
-
-O agente avalia:
-
-- valor total;
-- valor por hora;
-- local;
-- horário;
-- alimentação;
-- transporte;
-- prazo de pagamento;
-- risco;
-- clareza da proposta.
-
-Ele sugere pedir detalhes, negociar, aceitar ou recusar, mas não confirma automaticamente.
-
-## Logs
-
-Arquivos:
-
-- `logs/audit.jsonl`
-- `logs/errors.jsonl`
-
-E-mails, telefones, CPFs e tokens são mascarados nos logs.
-
-## Exportar ou apagar histórico
-
-O histórico fica em `data/jobs.sqlite`. Para backup, copie esse arquivo com o agente parado. Para apagar histórico, pare o agente e remova `data/jobs.sqlite`, `logs/*.jsonl` e os arquivos em `generated/`.
-
-## GitHub Actions
-
-O workflow `.github/workflows/career-hunter.yml` roda manualmente ou a cada 4 horas no cron `17 */4 * * *`.
-
-Configure segredos no GitHub Actions. Nunca coloque tokens no repositório.
-
-Quando roda no GitHub, o agente executa em servidor temporário do Actions: instala dependências, faz scan, pontua, prepara candidaturas e salva artefatos com banco, logs e relatórios. O painel web local não fica “hospedado” pelo GitHub Pages, porque ele depende de Node.js, Express e SQLite. Para painel online contínuo, use um serviço com Node.js persistente, como Render, Railway, Fly.io ou VPS.
-
-Para uso online privado ou multiusuário, veja `docs/ONLINE_DEPLOY.md`. Para evolução de produto público, veja `docs/MULTIUSER_PRODUCT_PLAN.md`.
-
-O GitHub Actions serve para automação agendada e histórico por artefatos; o painel em `localhost:8788` serve para operação local com aprovação manual.
-
-## Rodar online e sincronizado
-
-GitHub sozinho não mantém este painel online porque o app depende de Node.js, Express e SQLite. Para acessar de qualquer lugar e manter tudo sincronizado, hospede em Render, Railway, Fly.io ou VPS com disco persistente.
-
-O painel já possui cadastro/login multiusuário. No primeiro acesso online, crie a conta administradora; os dados antigos do banco local serão vinculados ao primeiro usuário criado. Depois disso, cada pessoa usa sua própria conta, com vagas, candidaturas, configurações, perfis e memória separados.
-
-Para automação online em todos os usuários ativos, use `npm run scan-all` e `npm run prepare-all`. Para rodar em apenas um usuário, defina `CAREER_HUNTER_USER_ID` e use `npm run scan` ou `npm run prepare-applications`.
-
-A aba **Agências Conectadas** centraliza acessos de InfoJobs, Vagas.com, Gupy, Catho, SINE e outros portais. Em produção, configure `ACCOUNT_VAULT_KEY` no Render para criptografar senhas conectadas.
-
-Arquivos preparados:
-
-- `Dockerfile`
-- `render.yaml`
-- `render-free.yaml` (demonstração sem persistência)
-- `docs/ONLINE_DEPLOY.md`
-
-No Render, use `DATABASE_URL=file:/var/data/jobs.sqlite` e configure um disco persistente em `/var/data`. As chaves ficam em environment variables do serviço, não no repositório.
-
-O arquivo `render.yaml` está preparado para uso real com instância `starter` e disco persistente. O plano gratuito do Render serve para teste, mas não é recomendado para este agente com SQLite porque serviços gratuitos não preservam arquivos locais como banco/currículos em reinícios e redeploys.
-
-## Expansão de conectores
-
-Os conectores estão em `src/modules/sources/`. A regra é simples:
-
-- prefira API oficial;
-- se exigir token, pule com log amigável quando não estiver configurado;
-- não automatize plataforma logada sem permissão explícita e API permitida;
-- não faça scraping do LinkedIn.
-
-## Painel
-
-Rode:
-
-```bash
-npm run dashboard
+```env
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4o-mini
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-1.5-flash
+GOOGLE_SEARCH_API_KEY=
+GOOGLE_SEARCH_ENGINE_ID=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GMAIL_REFRESH_TOKEN=
+ACCOUNT_VAULT_KEY=
 ```
 
-Abra:
+Nunca publique `.env`, tokens do Gmail, banco SQLite, currículo ou chaves privadas. Esses arquivos já estão excluídos do Git.
+
+## Gmail
+
+O Gmail é opcional. Quando conectado, o Ápice:
+
+- importa alertas e newsletters de vagas;
+- relaciona respostas à candidatura correta;
+- classifica confirmação, recusa, entrevista, avanço, proposta e ação solicitada;
+- mantém atualização automática no intervalo configurado e um botão de atualização manual.
+
+Sem Gmail, a busca e o painel continuam funcionando; apenas os retornos por e-mail deixam de ser sincronizados.
+
+## Privacidade e segurança
+
+- cada usuário possui vagas, perfil, currículo, memória e configurações próprios;
+- senhas de agências são cifradas com `ACCOUNT_VAULT_KEY`;
+- chaves de IA não aparecem no JSON exportado;
+- páginas externas não podem incorporar ou controlar o painel;
+- nenhuma automação tenta ficar “indetectável”, contornar CAPTCHA ou violar regras de plataformas;
+- candidaturas reais exigem autorização rastreável e confirmação de envio.
+
+## Dados persistentes
+
+Localmente, o banco padrão fica em `data/jobs.sqlite`. Na Oracle, banco, currículos enviados, materiais gerados e logs ficam em volumes Docker persistentes e sobrevivem a atualizações do código.
+
+Para começar novamente, use **Configurações > Sincronização > Zerar candidaturas**. Essa operação apaga o histórico do usuário atual e devolve as vagas ao início, sem apagar currículo nem preferências.
+
+## Estrutura
 
 ```text
-http://localhost:8788
+public/                 interface do painel
+src/modules/jobs/       normalização, notas e duplicidades
+src/modules/sources/    conectores de fontes
+src/modules/applications/ preparação e autorização
+src/modules/gmail/      alertas e retornos de recrutadores
+src/modules/auth/       contas e sessões
+deploy/oracle/          produção gratuita na Oracle
+tests/                  testes automatizados
 ```
 
-No primeiro acesso, cadastre ou entre com sua conta. O fluxo principal é: Painel, Vagas, Candidaturas, Próximas ações, Fontes e Meu currículo.
+## Garantia de qualidade
+
+Antes de publicar:
+
+```bash
+npm run lint
+npm test
+```
+
+O conjunto cobre o fluxo de autorização, currículo oficial, Gmail, resiliência a limites, fontes reais, duplicidades, salários, LinkedIn assistido, portabilidade e implantação Oracle.

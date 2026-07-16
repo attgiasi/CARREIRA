@@ -1,0 +1,59 @@
+name: apice
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: file:/app/storage/jobs.sqlite
+      STORAGE_ROOT: /app/storage
+      DASHBOARD_PORT: "8788"
+    expose:
+      - "8788"
+    volumes:
+      - apice_storage:/app/storage
+      - apice_generated:/app/generated
+      - apice_logs:/app/logs
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8788/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    networks:
+      - apice_private
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      APICE_DOMAIN: ${APICE_DOMAIN:?Defina APICE_DOMAIN em .env.production}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - apice_private
+
+networks:
+  apice_private:
+    driver: bridge
+
+volumes:
+  apice_storage:
+  apice_generated:
+  apice_logs:
+  caddy_data:
+  caddy_config:

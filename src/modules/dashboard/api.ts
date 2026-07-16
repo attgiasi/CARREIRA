@@ -18,6 +18,7 @@ import { buildSalaryAnalytics, parseBaseSalary, sourceDisplayName } from "./anal
 import { getGmailConnectionStatus, gmailProtectedRetryAfter, gmailRetryAfterFromError, isGmailRateLimitError } from "../gmail/gmailClient.js";
 import { ACTUAL_APPLICATION_SQL, getRecruiterPipelineMetrics, normalizeStoredRecruiterActions } from "../gmail/recruiterReplyReader.js";
 import { syncCareerGmail } from "../gmail/careerGmailSync.js";
+import { audit } from "../../safety/auditLogger.js";
 import {
   clearSessionCookie,
   createSession,
@@ -571,7 +572,8 @@ apiRouter.get("/summary", async (req, res) => {
   const lastFoundAt = db.query("SELECT MAX(found_at) as value FROM jobs WHERE user_id = ?", [userId])[0]?.value ?? "";
   const lastAppliedAt = db.query("SELECT MAX(applied_at) as value FROM applications WHERE user_id = ? AND applied_at IS NOT NULL", [userId])[0]?.value ?? "";
   const topJobs = db.query(`
-    SELECT title, company, source, fit_score, risk_score, status
+    SELECT id, title, company, source, url, salary, location, work_model,
+           fit_score, hire_chance_score, job_quality_score, risk_score, status, found_at
     FROM jobs
     WHERE user_id = ?
       AND source NOT IN ('google-assisted-search', 'sine', 'infojobs', 'jobs99', 'rh-agencies-curitiba', 'linkedin-search', 'indeed-search', 'vagascom-search', 'catho-search', 'netvagas-search', 'bne-search', 'trabalhabrasil-search', 'glassdoor-search', 'empregos-search', 'solides-search', 'abler-search', 'pandape-search')
@@ -579,7 +581,8 @@ apiRouter.get("/summary", async (req, res) => {
     LIMIT 5
   `, [userId]);
   const newestJobs = db.query(`
-    SELECT j.title, j.company, j.source, j.location, j.work_model, j.fit_score, j.risk_score, j.found_at
+    SELECT j.id, j.title, j.company, j.source, j.url, j.salary, j.location, j.work_model,
+           j.fit_score, j.hire_chance_score, j.job_quality_score, j.risk_score, j.found_at
     FROM jobs j
     LEFT JOIN applications a ON a.job_id = j.id AND a.user_id = ?
     WHERE j.user_id = ? AND a.id IS NULL
@@ -1482,6 +1485,14 @@ apiRouter.get("/applications", async (req, res) => {
       j.risk_flags,
       j.fit_reason,
       j.hire_chance_reason,
+      (SELECT t.status FROM application_attempts t WHERE t.application_id = a.id AND t.user_id = a.user_id ORDER BY t.id DESC LIMIT 1) as latest_attempt_status,
+      (SELECT t.result_message FROM application_attempts t WHERE t.application_id = a.id AND t.user_id = a.user_id ORDER BY t.id DESC LIMIT 1) as latest_attempt_message,
+      (SELECT t.created_at FROM application_attempts t WHERE t.application_id = a.id AND t.user_id = a.user_id ORDER BY t.id DESC LIMIT 1) as latest_attempt_at,
+      (SELECT e.subject FROM recruiter_email_events e WHERE e.application_id = a.id AND e.user_id = a.user_id ORDER BY datetime(e.received_at) DESC, e.id DESC LIMIT 1) as latest_email_subject,
+      (SELECT e.excerpt FROM recruiter_email_events e WHERE e.application_id = a.id AND e.user_id = a.user_id ORDER BY datetime(e.received_at) DESC, e.id DESC LIMIT 1) as latest_email_excerpt,
+      (SELECT e.event_type FROM recruiter_email_events e WHERE e.application_id = a.id AND e.user_id = a.user_id ORDER BY datetime(e.received_at) DESC, e.id DESC LIMIT 1) as latest_event_type,
+      (SELECT e.requires_action FROM recruiter_email_events e WHERE e.application_id = a.id AND e.user_id = a.user_id ORDER BY datetime(e.received_at) DESC, e.id DESC LIMIT 1) as latest_requires_action,
+      (SELECT e.action_summary FROM recruiter_email_events e WHERE e.application_id = a.id AND e.user_id = a.user_id ORDER BY datetime(e.received_at) DESC, e.id DESC LIMIT 1) as latest_action_summary,
       (SELECT e.action_url FROM recruiter_email_events e WHERE e.application_id = a.id ORDER BY datetime(e.received_at) DESC, e.id DESC LIMIT 1) as latest_email_url
     FROM applications a
     LEFT JOIN jobs j ON j.id = a.job_id
@@ -1580,6 +1591,62 @@ apiRouter.post("/applications/retry", async (req, res) => {
     );
   }
   res.json({ ok: true, retried: ids.length });
+});
+
+apiRouter.post("/applications/reset", async (req, res) => {
+  const userId = currentUserId(req);
+  if (String(req.body?.confirmation ?? "").trim() !== "ZERAR CANDIDATURAS") {
+    res.status(400).json({ error: "Digite ZERAR CANDIDATURAS para confirmar a limpeza." });
+    return;
+  }
+
+  const db = await CareerDatabase.open();
+  const totals = db.query<Record<string, unknown>>(`
+    SELECT
+      COUNT(*) as applications,
+      (SELECT COUNT(*) FROM application_attempts t WHERE t.user_id = ?) as attempts,
+      (SELECT COUNT(*) FROM recruiter_email_events e WHERE e.user_id = ?) as recruiter_events
+    FROM applications a
+    WHERE a.user_id = ?
+  `, [userId, userId, userId])[0] ?? {};
+  const applicationIds = db.query<Record<string, unknown>>(
+    "SELECT id FROM applications WHERE user_id = ?",
+    [userId]
+  ).map((row) => Number(row.id)).filter(Boolean);
+
+  db.transaction(() => {
+    if (applicationIds.length) {
+      const placeholders = applicationIds.map(() => "?").join(",");
+      db.run(`DELETE FROM interviews WHERE application_id IN (${placeholders})`, applicationIds);
+    }
+    db.run("DELETE FROM application_attempts WHERE user_id = ?", [userId]);
+    db.run("DELETE FROM recruiter_email_events WHERE user_id = ?", [userId]);
+    db.run("DELETE FROM applications WHERE user_id = ?", [userId]);
+    db.run(`
+      UPDATE jobs
+      SET status = CASE
+        WHEN fit_score >= 85 AND risk_score < 45 THEN 'Vaga Ouro'
+        WHEN fit_score >= 70 THEN 'Boa oportunidade'
+        ELSE 'Encontrada'
+      END
+      WHERE user_id = ?
+    `, [userId]);
+  });
+
+  audit("dashboard", "reset-applications", `Candidaturas zeradas para o usuário ${userId}.`, "medio", {
+    applications: Number(totals.applications ?? 0),
+    attempts: Number(totals.attempts ?? 0),
+    recruiterEvents: Number(totals.recruiter_events ?? 0)
+  });
+  res.json({
+    ok: true,
+    cleared: {
+      applications: Number(totals.applications ?? 0),
+      attempts: Number(totals.attempts ?? 0),
+      recruiterEvents: Number(totals.recruiter_events ?? 0)
+    },
+    message: "Candidaturas zeradas. As vagas voltaram ao início do fluxo."
+  });
 });
 
 apiRouter.post("/applications/auto-apply", async (req, res) => {
@@ -1895,7 +1962,7 @@ apiRouter.post("/environment", (req, res) => {
     return;
   }
   if (process.env.NODE_ENV === "production") {
-    res.status(409).json({ error: "No ambiente online, configure chaves e banco nas Environment Variables do Render. O sistema não grava segredos no disco do servidor." });
+    res.status(409).json({ error: "No ambiente online, configure chaves e banco nas variáveis protegidas da hospedagem. O sistema não grava segredos pelo navegador." });
     return;
   }
   const body = req.body as Record<string, string | undefined>;

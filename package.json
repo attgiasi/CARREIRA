@@ -1,7 +1,7 @@
 {
   "name": "career-hunter-agent",
-  "version": "0.1.0",
-  "description": "Agente seguro de busca, análise, preparação e acompanhamento de vagas para Giasi Mandela Silva.",
+  "version": "3.0.0",
+  "description": "Agente seguro de busca, análise, preparação e acompanhamento de vagas.",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -25,10 +25,10 @@
     "@types/node": "^22.10.5",
     "dotenv": "^16.4.7",
     "express": "^4.19.2",
+    "lucide": "^0.468.0",
     "sql.js": "^1.12.0",
     "typescript": "^5.7.2"
   },
-  "devDependencies": {},
   "engines": {
     "node": ">=20"
   }

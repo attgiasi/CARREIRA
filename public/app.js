@@ -17,8 +17,30 @@ const tabs = [
   ["dashboard", "Visão geral"],
   ["jobs", "Vagas"],
   ["applications", "Candidaturas"],
-  ["profile", "Meu perfil"]
+  ["profile", "Meu perfil"],
+  ["settings", "Configurações"]
 ];
+
+const tabIcons = {
+  dashboard: "dashboard",
+  jobs: "briefcase",
+  applications: "clipboard-check",
+  profile: "user",
+  settings: "settings"
+};
+
+const pageMeta = {
+  dashboard: ["CENTRAL DE CARREIRA", "Visão geral"],
+  jobs: ["OPORTUNIDADES", "Vagas"],
+  applications: ["PIPELINE", "Candidaturas"],
+  profile: ["IDENTIDADE PROFISSIONAL", "Meu perfil"],
+  settings: ["CONTROLE DO AGENTE", "Configurações"],
+  returns: ["PIPELINE", "Retornos das candidaturas"],
+  aiApply: ["ASSISTENTE", "Candidatura com IA"],
+  accounts: ["INTEGRAÇÕES", "Agências conectadas"],
+  sources: ["INTELIGÊNCIA DE MERCADO", "Fontes de vagas"],
+  logs: ["SISTEMA", "Saúde do agente"]
+};
 
 const assistedSources = new Set([
   "google-assisted-search",
@@ -42,19 +64,82 @@ const assistedSources = new Set([
 
 document.documentElement.dataset.theme = localStorage.getItem("careerHunterTheme") || "light";
 
+function icon(name, className = "") {
+  return `<i data-lucide="${escapeHtml(name)}"${className ? ` class="${escapeHtml(className)}"` : ""}></i>`;
+}
+
+function refreshIcons(root = document) {
+  requestAnimationFrame(() => window.apiceRenderIcons?.(root));
+}
+
+window.addEventListener("apice-icons-ready", () => refreshIcons());
+
+function initials(value) {
+  return String(value || "A").trim().split(/\s+/).slice(0, 2).map((part) => part[0] || "").join("").toUpperCase();
+}
+
+function updateShellState(tab = currentTab) {
+  const [kicker, title] = pageMeta[tab] || pageMeta.dashboard;
+  const kickerNode = document.querySelector("#pageKicker");
+  const titleNode = document.querySelector("#pageTitle");
+  if (kickerNode) kickerNode.textContent = kicker;
+  if (titleNode) titleNode.textContent = title;
+  document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
+  document.querySelector("#appSidebar")?.classList.remove("open");
+  document.querySelector("#sidebarBackdrop")?.classList.remove("visible");
+  refreshIcons();
+}
+
 function renderShell() {
-  const nav = currentUser ? tabs.map(([id, label]) => `<button data-tab="${id}">${label}</button>`).join("") : "";
-  header.innerHTML = `
-    <div class="brand-row">
-      <button class="brand-lockup" data-tab="dashboard" title="Ir para o painel">
+  document.body.classList.toggle("authenticated", Boolean(currentUser));
+  if (!currentUser) {
+    header.innerHTML = `<div class="auth-topbar">
+      <button class="brand-lockup" data-tab="dashboard" title="Ápice">
         <img class="brand-logo" src="/apice-mark.svg" alt="">
         <span><strong>ÁPICE</strong><small>Inteligência de carreira</small></span>
       </button>
-      <nav id="mainNav">${nav}</nav>
-      ${currentUser ? `<div class="account-chip"><strong>${escapeHtml(currentUser.name)}</strong><small>${escapeHtml(currentUser.email)}</small><button id="logoutButton">Sair</button></div>` : ""}
-      <button id="themeToggle" title="Alternar modo escuro"></button>
+      <button id="themeToggle" class="icon-button" title="Alternar tema" aria-label="Alternar tema">${icon(document.documentElement.dataset.theme === "dark" ? "sun" : "moon")}</button>
     </div>`;
-  document.querySelector("#themeToggle").textContent = document.documentElement.dataset.theme === "dark" ? "Tema claro" : "Tema escuro";
+    refreshIcons(header);
+    return;
+  }
+
+  const nav = tabs.map(([id, label]) => `<button class="nav-link ${currentTab === id ? "active" : ""}" data-tab="${id}">
+    ${icon(tabIcons[id])}<span>${label}</span>
+  </button>`).join("");
+  const [kicker, title] = pageMeta[currentTab] || pageMeta.dashboard;
+  header.innerHTML = `
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+    <aside class="app-sidebar" id="appSidebar">
+      <button class="brand-lockup" data-tab="dashboard" title="Ir para a visão geral">
+        <img class="brand-logo" src="/apice-mark.svg" alt="">
+        <span><strong>ÁPICE</strong><small>Carreira inteligente</small></span>
+      </button>
+      <div class="nav-caption">MENU PRINCIPAL</div>
+      <nav id="mainNav" aria-label="Navegação principal">${nav}</nav>
+      <div class="sidebar-spacer"></div>
+      <div class="sidebar-status">
+        <span class="live-dot"></span>
+        <div><strong>Agente disponível</strong><small>Dados protegidos por usuário</small></div>
+      </div>
+      <div class="account-panel">
+        <span class="account-avatar">${escapeHtml(initials(currentUser.name))}</span>
+        <div><strong>${escapeHtml(currentUser.name)}</strong><small>${escapeHtml(currentUser.email)}</small></div>
+        <button id="logoutButton" class="icon-button subtle" title="Sair" aria-label="Sair">${icon("logout")}</button>
+      </div>
+      <span class="product-version">Ápice · 3.0</span>
+    </aside>
+    <div class="topbar">
+      <button id="mobileMenu" class="icon-button mobile-menu" title="Abrir menu" aria-label="Abrir menu">${icon("menu")}</button>
+      <div class="topbar-title"><span id="pageKicker">${escapeHtml(kicker)}</span><h1 id="pageTitle">${escapeHtml(title)}</h1></div>
+      <div class="topbar-actions">
+        <span class="save-indicator" id="globalStatus"><i></i>Agente pronto</span>
+        <button id="globalSync" class="button secondary" title="Atualizar respostas do Gmail">${icon("refresh")}<span>Atualizar Gmail</span></button>
+        <button id="globalScan" class="button primary" title="Buscar novas vagas">${icon("search")}<span>Buscar vagas</span></button>
+        <button id="themeToggle" class="icon-button" title="Alternar tema" aria-label="Alternar tema">${icon(document.documentElement.dataset.theme === "dark" ? "sun" : "moon")}</button>
+      </div>
+    </div>`;
+  refreshIcons(header);
 }
 
 async function json(url, options) {
@@ -530,18 +615,18 @@ function renderGroupedCards(rows, cardRenderer, itemLabel) {
 
 function sourceLink(row, label = sourceName(row)) {
   return hasDirectJobUrl(row)
-    ? `<a class="source-link" href="${escapeHtml(row.url)}" target="_blank" rel="noreferrer">${escapeHtml(label)}</a>`
+    ? `<a class="source-link" href="${escapeHtml(row.url)}" target="_blank" rel="noreferrer">${escapeHtml(label)} ${icon("external-link")}</a>`
     : isAssistedSource(row.source) && hasUsableJobUrl(row)
-      ? `<a class="source-link" href="${escapeHtml(row.url)}" target="_blank" rel="noreferrer">Buscar no ${escapeHtml(label)}</a>`
+      ? `<a class="source-link" href="${escapeHtml(row.url)}" target="_blank" rel="noreferrer">Buscar no ${escapeHtml(label)} ${icon("external-link")}</a>`
     : `<span class="source-badge">${escapeHtml(label)}</span>`;
 }
 
 function sourceActionLink(row) {
   if (hasDirectJobUrl(row)) {
-    return `<a class="action" href="${escapeHtml(row.url)}" target="_blank" rel="noreferrer">Abrir ${escapeHtml(sourceName(row))}</a>`;
+    return `<a class="action" href="${escapeHtml(row.url)}" target="_blank" rel="noreferrer">${icon("external-link")} Abrir vaga</a>`;
   }
   if (isAssistedSource(row.source) && hasUsableJobUrl(row)) {
-    return `<a class="action secondary" href="${escapeHtml(row.url)}" target="_blank" rel="noreferrer">Buscar no ${escapeHtml(sourceName(row))}</a>`;
+    return `<a class="action secondary" href="${escapeHtml(row.url)}" target="_blank" rel="noreferrer">${icon("search")} Buscar no ${escapeHtml(sourceName(row))}</a>`;
   }
   return "";
 }
@@ -550,7 +635,7 @@ function aiAccelerateButton(row, label = "Acelerar candidatura", applicationId =
   if (!hasDirectJobUrl(row)) return "";
   const title = row.title || "";
   const company = row.company || "";
-  return `<button class="primary" data-accelerate-url="${escapeHtml(row.url)}" data-accelerate-title="${escapeHtml(title)}" data-accelerate-company="${escapeHtml(company)}" data-accelerate-application-id="${escapeHtml(applicationId)}">${escapeHtml(label)}</button>`;
+  return `<button class="primary" data-accelerate-url="${escapeHtml(row.url)}" data-accelerate-title="${escapeHtml(title)}" data-accelerate-company="${escapeHtml(company)}" data-accelerate-application-id="${escapeHtml(applicationId)}" data-accelerate-job-id="${escapeHtml(row.id || row.job_id || "")}">${escapeHtml(label)}</button>`;
 }
 
 function duplicateBadge(row) {
@@ -787,10 +872,12 @@ function jobNextStep(row) {
 
 function jobCard(row) {
   const canApprove = hasDirectJobUrl(row);
+  const fit = Number(row.fit_score || 0);
+  const fitTone = fit >= 85 ? "excellent" : fit >= 70 ? "good" : fit >= 50 ? "average" : "low";
   return `<article class="opportunity-card">
     <div class="card-topline">
-      ${canApprove ? cardCheckbox("job-check", row.id) : `<span class="state-chip warning">Precisa de link real</span>`}
-      <div class="card-score"><strong>${row.fit_score ?? "-"}</strong><span>nota</span></div>
+      <div class="card-select-wrap">${canApprove ? cardCheckbox("job-check", row.id) : `<span class="state-chip warning">Sem link direto</span>`}${fit >= 85 ? `<span class="recommendation-tag">Recomendada</span>` : ""}</div>
+      <div class="card-score ${fitTone}"><strong>${row.fit_score ?? "-"}</strong><span>aderência</span></div>
     </div>
     <div class="card-title-row">
       <div>
@@ -799,22 +886,22 @@ function jobCard(row) {
       </div>
       ${sourceLink(row)}
     </div>
-    <div class="mini-chip-row">${duplicateBadge(row)}</div>
+    <div class="mini-chip-row">${duplicateBadge(row)}<span class="state-chip neutral">Chance ${escapeHtml(row.hire_chance_score ?? "-")}/100</span></div>
     ${metaGrid([
       ["Salário", escapeHtml(row.salary || "Não informado")],
       ["Local", escapeHtml(row.location || "A confirmar")],
       ["Modelo", escapeHtml(row.work_model || "A confirmar")],
-      ["Cadastro", escapeHtml(formatDate(row.found_at))]
+      ["Encontrada", escapeHtml(formatDate(row.found_at))]
     ])}
-    <p class="card-description">${escapeHtml(shortDescription(row.description, 300))}</p>
-    <div class="card-footer">
-      <span class="state-chip ${isAssistedSource(row.source) ? "warning" : hasDirectJobUrl(row) ? "success" : "info"}">${isAssistedSource(row.source) ? "Fonte de busca" : hasDirectJobUrl(row) ? "Link da vaga" : "Sem canal"}</span>
-      <small>${escapeHtml(jobNextStep(row))}</small>
+    <p class="card-description">${escapeHtml(shortDescription(row.description, 360))}</p>
+    <div class="fit-explanation">
+      <span>${icon("sparkles")}</span>
+      <p><strong>Por que combina</strong>${escapeHtml(shortDescription(row.fit_reason || "A nota considera seu currículo, o cargo, o local e a qualidade do anúncio.", 180))}</p>
     </div>
     <div class="card-actions">
       ${sourceActionLink(row)}
-      ${canApprove ? `<button class="primary" data-job-approve="${row.id}">Aprovar vaga</button>` : ""}
-      <button data-detail="${row.id}">Detalhes</button>
+      ${canApprove ? `<button class="primary" data-job-approve="${row.id}">${icon("check")} Aprovar</button>` : ""}
+      <button data-detail="${row.id}">${icon("file-text")} Detalhes</button>
     </div>
   </article>`;
 }
@@ -823,12 +910,15 @@ function applicationCard(row, context = "approved") {
   const channel = applicationChannel(row);
   const state = applicationState(row);
   const authorized = isAuthorizedApplication(row);
-  const needsAttention = Boolean(String(row.next_action || "").trim()) || row.application_status === "Aguardando resposta do usuário";
+  const needsAttention = Number(row.latest_requires_action || 0) === 1 || Boolean(String(row.next_action || "").trim()) || row.application_status === "Aguardando resposta do usuário";
   const canApplyWithAi = authorized && ["ia", "dados"].includes(channel.id);
+  const fit = Number(row.fit_score || 0);
+  const fitTone = fit >= 85 ? "excellent" : fit >= 70 ? "good" : fit >= 50 ? "average" : "low";
+  const latestReturn = String(row.latest_email_subject || row.latest_action_summary || row.latest_email_excerpt || "").trim();
   return `<article class="opportunity-card application-card" data-channel="${channel.id}">
     <div class="card-topline">
       ${cardCheckbox("application-check", row.id)}
-      <div class="card-score"><strong>${row.fit_score ?? "-"}</strong><span>nota</span></div>
+      <div class="card-score ${fitTone}"><strong>${row.fit_score ?? "-"}</strong><span>aderência</span></div>
     </div>
     <div class="card-title-row">
       <div>
@@ -837,35 +927,34 @@ function applicationCard(row, context = "approved") {
       </div>
       ${sourceLink(row)}
     </div>
-    <div class="mini-chip-row">${duplicateBadge(row)}</div>
+    <div class="mini-chip-row">${duplicateBadge(row)}<span class="state-chip ${state.tone}">${escapeHtml(state.label)}</span><span class="state-chip neutral">Chance ${escapeHtml(row.hire_chance_score ?? "-")}/100</span></div>
     ${metaGrid([
       ["Salário", escapeHtml(row.salary || "Não informado")],
       ["Local", escapeHtml(row.location || "A confirmar")],
       ["Modelo", escapeHtml(row.work_model || "A confirmar")],
-      ["Chance", `${escapeHtml(row.hire_chance_score ?? "-")}/100`],
-      [context === "sent" ? (row.approval_status === "confirmada_por_email" ? "Confirmado no Gmail" : "Candidatado") : "Preparada", escapeHtml(formatDate(context === "sent" ? row.applied_at : row.updated_at))],
-      ["Autorização", context === "sent" ? "Concluída" : authorized ? escapeHtml(formatDate(row.authorized_at)) : "Aguardando você"],
-      ["Etapa", escapeHtml(state.label)],
-      ["Último retorno", row.last_recruiter_email_at ? escapeHtml(formatDate(row.last_recruiter_email_at)) : "Sem retorno"]
+      [context === "sent" ? "Candidatado em" : "Aprovada em", escapeHtml(formatDate(context === "sent" ? row.applied_at : row.updated_at))]
     ])}
     <p class="card-description">${escapeHtml(shortDescription(row.description, 280))}</p>
-    <div class="application-assets">
-      <span><strong>CV</strong> ${escapeHtml(fileName(row.generated_resume_path))}</span>
-      <span><strong>Carta</strong> ${escapeHtml(fileName(row.cover_letter_path))}</span>
-      <span><strong>Chance</strong> ${escapeHtml(row.hire_chance_reason || "Calculada pela aderência, qualidade da vaga e risco.")}</span>
+    ${latestReturn ? `<div class="return-preview ${Number(row.latest_requires_action || 0) === 1 ? "attention" : ""}">
+      ${icon(Number(row.latest_requires_action || 0) === 1 ? "circle-alert" : "mail")}
+      <div><strong>${Number(row.latest_requires_action || 0) === 1 ? "Ação solicitada" : "Último retorno"}</strong><p>${escapeHtml(shortDescription(latestReturn, 220))}</p></div>
+    </div>` : ""}
+    <div class="application-timeline" aria-label="Linha do tempo">
+      <span class="done"><i></i><strong>Aprovada</strong><small>${escapeHtml(formatDayMonth(row.created_at || row.updated_at))}</small></span>
+      <span class="${authorized || context === "sent" ? "done" : "current"}"><i></i><strong>Autorizada</strong><small>${authorized || context === "sent" ? escapeHtml(formatDayMonth(row.authorized_at)) : "Aguardando"}</small></span>
+      <span class="${context === "sent" ? "done" : authorized ? "current" : ""}"><i></i><strong>Enviada</strong><small>${context === "sent" ? escapeHtml(formatDayMonth(row.applied_at)) : authorized ? "Em preparação" : "Pendente"}</small></span>
     </div>
-    <div class="card-footer">
-      ${context !== "sent" ? `<span class="state-chip ${channel.tone}">${escapeHtml(channel.label)}</span>` : ""}
-      <span class="state-chip ${state.tone}">${escapeHtml(state.label)}</span>
-      ${context === "sent" && row.next_action ? `<small>${escapeHtml(row.next_action)}</small>` : context === "sent" ? availabilityChip(row) : `<small>${escapeHtml(applicationNextAction(row))}</small>`}
+    <div class="card-footer application-next-step">
+      ${context !== "sent" ? `<span class="state-chip ${channel.tone}">${escapeHtml(channel.label)}</span>` : availabilityChip(row)}
+      <small>${escapeHtml(context === "sent" ? row.next_action || "O Gmail monitora respostas e mudanças de etapa." : applicationNextAction(row))}</small>
     </div>
     <div class="card-actions">
       ${sourceActionLink(row)}
-      ${row.latest_email_url ? `<a class="action" href="${escapeHtml(row.latest_email_url)}" target="_blank" rel="noreferrer">Abrir e-mail</a>` : ""}
-      ${context !== "sent" && isAwaitingAuthorization(row) && !needsAttention ? `<button class="primary" data-authorize="${row.id}">Autorizar candidatura</button>` : ""}
-      ${canApplyWithAi && context !== "sent" ? `<button class="primary" data-ai-apply="${row.id}" data-application-url="${escapeHtml(row.url || "")}" data-application-title="${escapeHtml(row.title || "")}" data-application-company="${escapeHtml(row.company || "")}">Abrir assistente da IA</button>` : ""}
-      ${context !== "sent" && authorized ? `<button data-mark-sent="${row.id}">Registrar como enviada</button>` : context === "sent" ? `<button data-retry="${row.id}">Candidatar novamente</button>` : ""}
-      ${row.job_id ? `<button data-detail="${row.job_id}">Detalhes</button>` : ""}
+      ${row.latest_email_url ? `<a class="action" href="${escapeHtml(row.latest_email_url)}" target="_blank" rel="noreferrer">${icon("mail")} Abrir e-mail</a>` : ""}
+      ${context !== "sent" && isAwaitingAuthorization(row) && !needsAttention ? `<button class="primary" data-authorize="${row.id}">${icon("wand")} Autorizar IA</button>` : ""}
+      ${canApplyWithAi && context !== "sent" ? `<button class="primary" data-ai-apply="${row.id}" data-application-url="${escapeHtml(row.url || "")}" data-application-title="${escapeHtml(row.title || "")}" data-application-company="${escapeHtml(row.company || "")}">${icon("bot")} Abrir e preencher</button>` : ""}
+      ${context !== "sent" && authorized ? `<button data-mark-sent="${row.id}">${icon("check-circle")} Confirmar envio</button>` : context === "sent" ? `<button data-retry="${row.id}">${icon("retry")} Candidatar novamente</button>` : ""}
+      ${row.job_id ? `<button data-detail="${row.job_id}">${icon("file-text")} Detalhes</button>` : ""}
     </div>
   </article>`;
 }
@@ -2300,7 +2389,7 @@ async function profilesPage() {
     <section>
       <div class="section-head"><div><span class="eyebrow">Novo perfil</span><h3>Criar perfil em branco</h3></div></div>
       <div class="form-grid single">
-        <label>Nome do perfil<input id="profileLabel" placeholder="Ex: Giasi principal"></label>
+        <label>Nome do perfil<input id="profileLabel" placeholder="Ex: Perfil principal"></label>
         <label>Nome completo<input id="profileName" placeholder="Preencha quando for usar este perfil"></label>
         <label>E-mail<input id="profileEmail"></label>
         <label>Telefone<input id="profilePhone"></label>
@@ -2909,6 +2998,973 @@ async function sourcesPage() {
   document.querySelector("#sourceScan").onclick = () => runScanAndRefresh("sources");
 }
 
+function environmentStatusItem(label, configured, detail) {
+  return `<div class="integration-status-item"><span class="status-dot ${configured ? "online" : "offline"}"></span><div><strong>${escapeHtml(label)}</strong><small>${escapeHtml(detail)}</small></div><span class="state-chip ${configured ? "success" : "warning"}">${configured ? "Ativo" : "Pendente"}</span></div>`;
+}
+
+async function settingsV3() {
+  const [data, env, portableExport, gmail] = await Promise.all([
+    json("/api/settings"),
+    json("/api/environment"),
+    json("/api/settings/export?scope=github"),
+    json("/api/gmail/status")
+  ]);
+  const envLocked = Boolean(env.managedExternally || currentUser?.role !== "admin");
+  const careerLevels = getPath(data, "jobSearchPreferences.careerLevels", {});
+  const workStyles = getPath(data, "jobSearchPreferences.workStyles", {});
+  const schedules = getPath(data, "jobSearchPreferences.schedulePreferences", {});
+  const contracts = getPath(data, "jobSearchPreferences.contractTypes", {});
+  const education = getPath(data, "jobSearchPreferences.educationFilters", {});
+  const sources = getPath(data, "sources", {});
+  const tracks = getPath(data, "careerTracks", {});
+  const automationEnabled = Boolean(data.agent.enabled) && !Boolean(data.agent.paused) && Boolean(getPath(data, "applications.autoApply"));
+
+  app.innerHTML = `<div class="page-stack settings-v3">
+    <section class="page-intro settings-intro-v3">
+      <div><span class="eyebrow">CONFIGURAÇÃO ÚNICA</span><h2>Defina como o Ápice trabalha por você</h2><p>Cada escolha aparece uma única vez e é salva na sua conta, tanto local quanto online.</p></div>
+      <div class="page-actions"><span class="save-indicator" id="settingsSaveIndicator"><i></i><span>Configuração carregada</span></span><button id="copyPortableSettingsV3" class="button secondary">${icon("copy")} Copiar configuração</button><button id="saveSettingsV3" class="button primary">${icon("save")} Salvar agora</button></div>
+    </section>
+
+    <div class="settings-layout-v3">
+      <aside class="settings-index">
+        <span>SEÇÕES</span>
+        <button data-jump="settingsGoals"><b>01</b> Objetivos</button>
+        <button data-jump="settingsCompatibility"><b>02</b> Compatibilidade</button>
+        <button data-jump="settingsSalary"><b>03</b> Remuneração</button>
+        <button data-jump="settingsSources"><b>04</b> Fontes</button>
+        <button data-jump="settingsAutomation"><b>05</b> Automação</button>
+        <button data-jump="settingsIntegrations"><b>06</b> IA e integrações</button>
+        <button data-jump="settingsSafety"><b>07</b> Proteções</button>
+        <button data-jump="settingsSync"><b>08</b> Sincronização</button>
+      </aside>
+
+      <div class="settings-content-v3">
+        <section class="settings-section-v3" id="settingsGoals">
+          <span class="section-number">01</span>
+          <div class="settings-section-content">
+            <div class="section-heading-row"><div><h3>Objetivos profissionais</h3><p>Cargos e trilhas usados para encontrar e classificar vagas.</p></div><span class="soft-badge">${getPath(data, "jobSearchPreferences.targetRoles", []).length} cargos</span></div>
+            ${textareaField("Cargos desejados, um por linha", "jobSearchPreferences.targetRoles", getPath(data, "jobSearchPreferences.targetRoles", []), "Use nomes específicos; eles têm maior peso na nota de aderência.")}
+            ${checkboxGrid("Trilhas de carreira", "careerTracks", tracks)}
+            ${checkboxGrid("Níveis de cargo", "jobSearchPreferences.careerLevels", careerLevels)}
+          </div>
+        </section>
+
+        <section class="settings-section-v3" id="settingsCompatibility">
+          <span class="section-number">02</span>
+          <div class="settings-section-content">
+            <div class="section-heading-row"><div><h3>Local, jornada e compatibilidade</h3><p>Defina onde, como e em quais condições deseja trabalhar.</p></div></div>
+            <div class="form-grid">
+              ${textareaField("Locais preferidos, um por linha", "jobSearchPreferences.locations.preferred", getPath(data, "jobSearchPreferences.locations.preferred", []))}
+              ${textareaField("Estados aceitos, uma sigla por linha", "jobSearchPreferences.locations.acceptedStates", getPath(data, "jobSearchPreferences.locations.acceptedStates", []))}
+            </div>
+            ${checkboxGrid("Modelo e deslocamento", "jobSearchPreferences.workStyles", workStyles)}
+            ${checkboxGrid("Horários e escalas", "jobSearchPreferences.schedulePreferences", schedules)}
+            ${checkboxGrid("Tipos de contrato", "jobSearchPreferences.contractTypes", contracts)}
+            <details class="advanced-panel-v3"><summary>Formação e requisitos adicionais ${icon("chevron-down")}</summary>${checkboxGrid("Formação aceita", "jobSearchPreferences.educationFilters", education)}${checkboxGrid("CNH e veículo", "jobSearchPreferences.driverLicenseFilters", getPath(data, "jobSearchPreferences.driverLicenseFilters", {}))}</details>
+          </div>
+        </section>
+
+        <section class="settings-section-v3" id="settingsSalary">
+          <span class="section-number">03</span>
+          <div class="settings-section-content">
+            <div class="section-heading-row"><div><h3>Remuneração mínima e desejada</h3><p>O Ápice considera salário-base; benefícios e bonificações ficam separados.</p></div><span class="soft-badge">BRL</span></div>
+            <div class="salary-settings-grid">
+              <div><span>CLT mensal</span>${numberInput("Mínimo", "salaryPreferences.salaryByContractType.clt.minimumMonthly", getPath(data, "salaryPreferences.salaryByContractType.clt.minimumMonthly"))}${numberInput("Desejado", "salaryPreferences.salaryByContractType.clt.desiredMonthly", getPath(data, "salaryPreferences.salaryByContractType.clt.desiredMonthly"))}${numberInput("Excelente", "salaryPreferences.salaryByContractType.clt.excellentMonthly", getPath(data, "salaryPreferences.salaryByContractType.clt.excellentMonthly"))}</div>
+              <div><span>PJ mensal</span>${numberInput("Mínimo", "salaryPreferences.salaryByContractType.pj.minimumMonthly", getPath(data, "salaryPreferences.salaryByContractType.pj.minimumMonthly"))}${numberInput("Desejado", "salaryPreferences.salaryByContractType.pj.desiredMonthly", getPath(data, "salaryPreferences.salaryByContractType.pj.desiredMonthly"))}${numberInput("Excelente", "salaryPreferences.salaryByContractType.pj.excellentMonthly", getPath(data, "salaryPreferences.salaryByContractType.pj.excellentMonthly"))}</div>
+              <div><span>Freela por diária</span>${numberInput("Mínimo", "salaryPreferences.salaryByContractType.freelancer.minimumDaily", getPath(data, "salaryPreferences.salaryByContractType.freelancer.minimumDaily"))}${numberInput("Desejado", "salaryPreferences.salaryByContractType.freelancer.desiredDaily", getPath(data, "salaryPreferences.salaryByContractType.freelancer.desiredDaily"))}${numberInput("Excelente", "salaryPreferences.salaryByContractType.freelancer.excellentDaily", getPath(data, "salaryPreferences.salaryByContractType.freelancer.excellentDaily"))}</div>
+            </div>
+            <div class="choice-grid compact-choices">
+              ${settingToggle("Recusar abaixo do mínimo", "salaryPreferences.rejectBelowMinimum", getPath(data, "salaryPreferences.rejectBelowMinimum"), "Remove oportunidades que informem salário-base inferior ao mínimo.")}
+              ${settingToggle("Preferir salário informado", "salaryPreferences.preferSalaryInformed", getPath(data, "salaryPreferences.preferSalaryInformed"), "Dá prioridade a anúncios transparentes sobre remuneração.")}
+              ${settingToggle("Recusar vaga sem salário informado", "salaryPreferences.rejectWithoutSalary", getPath(data, "salaryPreferences.rejectWithoutSalary"), "Remove anúncios que não informem o salário-base. Deixe desativado para analisá-los com um aviso de transparência.")}
+            </div>
+            ${textareaField("Resposta padrão de pretensão CLT", "salaryPreferences.salaryExpectation.defaultCLT", getPath(data, "salaryPreferences.salaryExpectation.defaultCLT"))}
+          </div>
+        </section>
+
+        <section class="settings-section-v3" id="settingsSources">
+          <span class="section-number">04</span>
+          <div class="settings-section-content">
+            <div class="section-heading-row"><div><h3>Fontes de vagas</h3><p>Ative os canais que devem alimentar seu radar. Links finais têm prioridade sobre páginas de pesquisa.</p></div><button data-tab="sources" class="text-button">Ver desempenho das fontes ${icon("arrow-right")}</button></div>
+            ${checkboxGrid("Sites, ATS e alertas", "sources", sources)}
+            <div class="source-priority-note">${icon("shield")}<p><strong>Regra de qualidade</strong><span>Google pode ser usado para descobrir anúncios, mas o Ápice só mostra o endereço final da vaga quando houver um link individual válido.</span></p></div>
+          </div>
+        </section>
+
+        <section class="settings-section-v3" id="settingsAutomation">
+          <span class="section-number">05</span>
+          <div class="settings-section-content">
+            <div class="section-heading-row"><div><h3>Busca e candidatura automatizadas</h3><p>Escolha o ritmo e até onde a IA pode avançar depois da sua autorização.</p></div><span class="status-pill ${automationEnabled ? "online" : "limited"}"><i></i>${automationEnabled ? "Automação ativa" : "Modo assistido"}</span></div>
+            <div class="automation-preset">
+              <span>${icon("wand")}</span><div><strong>Fluxo recomendado</strong><p>Você aprova a vaga, autoriza a IA e o Ápice prepara todos os campos permitidos. Login, CAPTCHA e confirmações exigidas pelo site continuam sob seu controle.</p></div><button id="enableRecommendedAutomation" class="button primary">Aplicar configuração recomendada</button>
+            </div>
+            <div class="form-grid four-columns">
+              ${numberInput("Vagas por busca", "agent.maxJobsPerRun", getPath(data, "agent.maxJobsPerRun"))}
+              ${numberInput("Candidaturas por dia", "strategy.maxApplicationsPerDay", getPath(data, "strategy.maxApplicationsPerDay"))}
+              ${numberInput("Nota para preparar", "strategy.onlyPrepareAboveScore", getPath(data, "strategy.onlyPrepareAboveScore"))}
+              ${numberInput("Nota para priorizar", "strategy.onlyApplyAboveScore", getPath(data, "strategy.onlyApplyAboveScore"))}
+            </div>
+            <div class="choice-grid">
+              ${settingToggle("Agente ativo", "agent.enabled", getPath(data, "agent.enabled"), "Permite buscas, preparação e atualização do painel.")}
+              ${settingToggle("Pausar temporariamente", "agent.paused", getPath(data, "agent.paused"), "Interrompe novas rotinas sem apagar dados ou preferências.")}
+              ${settingToggle("Preparar candidaturas", "applications.prepareApplications", getPath(data, "applications.prepareApplications"), "Monta respostas, currículo e próximos passos para vagas autorizadas.")}
+              ${settingToggle("Candidatura automática permitida", "applications.autoApply", getPath(data, "applications.autoApply"), "Libera apenas integrações e canais oficialmente permitidos.")}
+              ${settingToggle("Preencher formulários", "applications.autoFillFormsWhenAllowed", getPath(data, "applications.autoFillFormsWhenAllowed"), "Prepara campos no navegador para revisão.")}
+              ${settingToggle("Perguntar e memorizar", "applications.askAndRememberMissingFields", getPath(data, "applications.askAndRememberMissingFields"), "Pergunta uma vez quando faltar um dado e reutiliza a resposta aprovada.")}
+              ${settingToggle("Autofill no navegador", "applications.allowBrowserAutofill", getPath(data, "applications.allowBrowserAutofill"), "Ativa o comando Preencher com Ápice na página oficial.")}
+              ${settingToggle("LinkedIn somente assistido", "applications.allowLinkedInSearchOnly", getPath(data, "applications.allowLinkedInSearchOnly"), "Localiza e prepara dados; o envio permanece na sua conta do LinkedIn.")}
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section-v3" id="settingsIntegrations">
+          <span class="section-number">06</span>
+          <div class="settings-section-content">
+            <div class="section-heading-row"><div><h3>IA e integrações</h3><p>Confira os serviços que dão inteligência e acompanhamento ao agente.</p></div></div>
+            <div class="integration-status-grid">
+              ${environmentStatusItem("OpenAI", env.openaiConfigured, env.openaiConfigured ? env.openaiModel : "Adicione OPENAI_API_KEY")}
+              ${environmentStatusItem("Gemini", env.geminiConfigured, env.geminiConfigured ? env.geminiModel : "Adicione GEMINI_API_KEY")}
+              ${environmentStatusItem("Gmail", gmail.connected, gmail.connected ? gmail.email || "Conta autorizada" : "Reconecte a conta Google")}
+              ${environmentStatusItem("Google Search", env.googleSearchConfigured, env.googleSearchConfigured ? "Busca direta configurada" : "API de pesquisa ainda não configurada")}
+            </div>
+            <div class="integration-actions"><button data-tab="accounts" class="button secondary">${icon("lock")} Agências conectadas</button><button id="syncSettingsGmail" class="button secondary">${icon("refresh")} Atualizar Gmail agora</button></div>
+            <details class="advanced-panel-v3" ${envLocked ? "" : "open"}><summary>Configuração técnica do ambiente ${icon("chevron-down")}</summary>
+              ${envLocked ? `<div class="note"><strong>Ambiente online protegido</strong><p>Chaves de IA e Gmail são alteradas nas variáveis de ambiente da hospedagem, nunca no GitHub.</p></div>` : `<div class="form-grid">
+                <label>Chave OpenAI<input id="envOpenaiKeyV3" type="password" placeholder="Manter atual se ficar vazio"></label>
+                <label>Modelo OpenAI<input id="envOpenaiModelV3" value="${escapeHtml(env.openaiModel || "")}"></label>
+                <label>Chave Gemini<input id="envGeminiKeyV3" type="password" placeholder="Manter atual se ficar vazio"></label>
+                <label>Modelo Gemini<input id="envGeminiModelV3" value="${escapeHtml(env.geminiModel || "")}"></label>
+                <label>Google Search API Key<input id="envGoogleKeyV3" type="password" placeholder="Manter atual se ficar vazio"></label>
+                <label>Google Search Engine ID<input id="envGoogleCxV3" placeholder="CX da pesquisa" value=""></label>
+                <button id="saveEnvironmentV3" class="button primary">${icon("save")} Salvar ambiente</button>
+              </div>`}
+            </details>
+          </div>
+        </section>
+
+        <section class="settings-section-v3" id="settingsSafety">
+          <span class="section-number">07</span>
+          <div class="settings-section-content">
+            <div class="section-heading-row"><div><h3>Proteções permanentes</h3><p>Estas regras preservam seu perfil, suas contas e a confiabilidade do histórico.</p></div>${icon("shield")}</div>
+            <div class="safety-guard-grid">
+              <div>${icon("badge-check")}<p><strong>Dados verdadeiros</strong><small>Nenhuma experiência, formação, idioma ou certificado é inventado.</small></p></div>
+              <div>${icon("lock")}<p><strong>Contas protegidas</strong><small>O agente não contorna CAPTCHA, SMS, login ou bloqueios da plataforma.</small></p></div>
+              <div>${icon("clipboard-check")}<p><strong>Envio auditável</strong><small>Uma vaga só conta como candidatada depois de confirmação real.</small></p></div>
+              <div>${icon("circle-help")}<p><strong>Perguntas objetivas</strong><small>Quando faltar informação, o sistema explica o campo e salva sua resposta aprovada.</small></p></div>
+            </div>
+            <div class="choice-grid compact-choices">
+              ${settingToggle("Registrar todas as ações", "safety.logEveryAction", getPath(data, "safety.logEveryAction"), "Mantém uma trilha de auditoria para diagnóstico e transparência.")}
+              ${settingToggle("Mascarar dados nos logs", "safety.maskSensitiveDataInLogs", getPath(data, "safety.maskSensitiveDataInLogs"), "Evita expor documentos e dados pessoais em registros técnicos.")}
+              ${settingToggle("Criar lembretes de retorno", "notifications.createFollowUpReminders", getPath(data, "notifications.createFollowUpReminders"), "Sinaliza candidaturas sem resposta após o período configurado.")}
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section-v3" id="settingsSync">
+          <span class="section-number">08</span>
+          <div class="settings-section-content">
+            <div class="section-heading-row"><div><h3>Sincronização e portabilidade</h3><p>Leve preferências seguras entre o computador, a hospedagem e o GitHub.</p></div>${icon("copy")}</div>
+            <div class="sync-grid">
+              <div class="sync-panel"><span>${icon("copy")}</span><div><strong>Configuração segura</strong><p>Sem nome, telefone, documentos, currículo ou chaves. Pode ser versionada no GitHub.</p></div><button id="downloadPortableSettingsV3" class="button secondary">${icon("download")} Baixar JSON</button></div>
+              <div class="sync-panel"><span>${icon("upload")}</span><div><strong>Importar escolhas</strong><p>Aplica cargos, locais, fontes, salários e regras em outra instalação.</p></div><label class="button secondary">${icon("upload")} Escolher arquivo<input id="settingsImportFileV3" type="file" accept="application/json,.json"></label></div>
+            </div>
+            <details class="code-panel"><summary>Código que reflete todas as escolhas ${icon("chevron-down")}</summary><textarea id="settingsCodeV3" class="code-output" spellcheck="false"></textarea></details>
+            <textarea id="portableSettingsCodeV3" class="code-output portable-code" spellcheck="false">${escapeHtml(JSON.stringify(portableExport, null, 2))}</textarea>
+            <div class="danger-zone">
+              <span>${icon("trash")}</span><div><strong>Começar candidaturas do zero</strong><p>Apaga candidaturas, tentativas e retornos vinculados desta conta. Currículo, perfil, preferências, vagas e Gmail permanecem.</p></div>
+              <label>Digite ZERAR CANDIDATURAS<input id="resetApplicationsPhrase" autocomplete="off"></label>
+              <button id="resetApplicationsV3" class="button danger" disabled>${icon("trash")} Zerar candidaturas</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>`;
+
+  let currentSettings = structuredClone(data);
+  let saveTimer = 0;
+  const code = document.querySelector("#settingsCodeV3");
+  const portableCode = document.querySelector("#portableSettingsCodeV3");
+  const indicator = document.querySelector("#settingsSaveIndicator");
+  const readValue = (element) => {
+    if (element.type === "checkbox") return element.checked;
+    if (element.type === "number") return Number(element.value || 0);
+    if (element.tagName === "TEXTAREA") {
+      const original = getPath(currentSettings, element.dataset.path);
+      return Array.isArray(original) ? element.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) : element.value;
+    }
+    return element.value;
+  };
+  const syncCode = () => {
+    document.querySelectorAll("[data-path]").forEach((element) => setPath(currentSettings, element.dataset.path, readValue(element)));
+    code.value = JSON.stringify(currentSettings, null, 2);
+  };
+  const setSaveState = (label, state = "") => {
+    indicator.className = `save-indicator ${state}`;
+    indicator.querySelector("span").textContent = label;
+  };
+  const saveCurrentSettings = async (feedback = false) => {
+    syncCode();
+    await json("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: code.value });
+    const time = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date());
+    setSaveState(`Salvo às ${time}`, "saved");
+    if (feedback) toast("Configurações salvas nesta conta.", "success");
+  };
+  const scheduleSave = () => {
+    setSaveState("Alterações pendentes", "pending");
+    clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(() => saveCurrentSettings(false).catch((error) => setSaveState(error.message, "error")), 900);
+  };
+  const downloadJson = (value, fileNameValue) => {
+    const blob = new Blob([`${JSON.stringify(value, null, 2)}\n`], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileNameValue;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+  const refreshPortable = async () => {
+    await saveCurrentSettings(false);
+    const exported = await json("/api/settings/export?scope=github");
+    portableCode.value = JSON.stringify(exported, null, 2);
+    return exported;
+  };
+
+  document.querySelectorAll("[data-path]").forEach((element) => element.addEventListener("input", () => { syncCode(); scheduleSave(); }));
+  document.querySelectorAll("[data-jump]").forEach((button) => button.addEventListener("click", () => document.querySelector(`#${button.dataset.jump}`)?.scrollIntoView({ behavior: "smooth", block: "start" })));
+  document.querySelector("#saveSettingsV3").onclick = () => saveCurrentSettings(true);
+  document.querySelector("#enableRecommendedAutomation").onclick = async () => {
+    setPath(currentSettings, "agent.enabled", true);
+    setPath(currentSettings, "agent.paused", false);
+    setPath(currentSettings, "agent.dryRun", false);
+    setPath(currentSettings, "applications.prepareApplications", true);
+    setPath(currentSettings, "applications.autoApply", true);
+    setPath(currentSettings, "applications.autoApplyWhenAllowed", true);
+    setPath(currentSettings, "applications.autoFillFormsWhenAllowed", true);
+    setPath(currentSettings, "applications.askAndRememberMissingFields", true);
+    setPath(currentSettings, "applications.allowBrowserAutofill", true);
+    setPath(currentSettings, "applications.requireApprovalBeforeApply", true);
+    setPath(currentSettings, "applications.neverMassApplyWithoutApproval", true);
+    await json("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(currentSettings) });
+    toast("Automação recomendada ativada. Aprovação e autorização continuam obrigatórias.", "success");
+    await settingsV3();
+  };
+  document.querySelector("#copyPortableSettingsV3").onclick = async () => {
+    const exported = await refreshPortable();
+    try { await navigator.clipboard.writeText(JSON.stringify(exported, null, 2)); } catch { portableCode.select(); document.execCommand("copy"); }
+    toast("Configuração segura copiada.", "success");
+  };
+  document.querySelector("#downloadPortableSettingsV3").onclick = async () => downloadJson(await refreshPortable(), "apice-preferencias-github.json");
+  document.querySelector("#settingsImportFileV3").onchange = async (event) => {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text());
+      await json("/api/settings/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(parsed) });
+      toast("Configuração importada.", "success");
+      await settingsV3();
+    } catch (error) { toast(`Não foi possível importar: ${escapeHtml(error.message)}`, "error"); }
+  };
+  document.querySelector("#syncSettingsGmail").onclick = async () => {
+    const result = await json("/api/gmail/sync", { method: "POST" });
+    toast(`${result.matched || 0} retorno(s) atualizados.`, "success");
+  };
+  document.querySelector("#saveEnvironmentV3")?.addEventListener("click", async () => {
+    await json("/api/environment", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      openaiApiKey: document.querySelector("#envOpenaiKeyV3").value,
+      openaiModel: document.querySelector("#envOpenaiModelV3").value,
+      geminiApiKey: document.querySelector("#envGeminiKeyV3").value,
+      geminiModel: document.querySelector("#envGeminiModelV3").value,
+      googleSearchApiKey: document.querySelector("#envGoogleKeyV3").value,
+      googleSearchEngineId: document.querySelector("#envGoogleCxV3").value
+    }) });
+    toast("Ambiente atualizado.", "success");
+    await settingsV3();
+  });
+  document.querySelector("#resetApplicationsPhrase").addEventListener("input", (event) => {
+    document.querySelector("#resetApplicationsV3").disabled = event.currentTarget.value.trim() !== "ZERAR CANDIDATURAS";
+  });
+  document.querySelector("#resetApplicationsV3").onclick = async () => {
+    if (!confirm("Apagar todo o histórico de candidaturas desta conta e devolver as vagas ao início?")) return;
+    const result = await json("/api/applications/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ confirmation: document.querySelector("#resetApplicationsPhrase").value.trim() }) });
+    toast(`${result.cleared.applications} candidatura(s) apagada(s).`, "success");
+    await load("dashboard");
+  };
+  code.addEventListener("input", () => {
+    try { currentSettings = JSON.parse(code.value); setSaveState("Código válido · salvar para aplicar", "pending"); } catch { setSaveState("JSON inválido", "error"); }
+  });
+  syncCode();
+  refreshIcons(app);
+}
+
+function monthlySalaryValue(value) {
+  const text = String(value || "").toLowerCase();
+  if (!text || /por hora|hora|di[aá]ria|por dia|evento|freela/.test(text)) return 0;
+  const matches = text.match(/\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:,\d{1,2})?/g) || [];
+  const values = matches.map((item) => Number(item.replace(/\./g, "").replace(",", "."))).filter((item) => Number.isFinite(item) && item >= 500);
+  return values.length ? Math.min(...values) : 0;
+}
+
+async function profilePage() {
+  const [profileData, careerData] = await Promise.all([json("/api/profiles"), json("/api/career-profile")]);
+  const active = profileData.active || {};
+  const memory = await json(`/api/answer-memory?profileId=${active.id || 0}`);
+  const completion = profileCompletion(active);
+  const missing = [
+    ["Nome completo", active.name],
+    ["E-mail", active.email],
+    ["Telefone", active.phone],
+    ["LinkedIn", active.linkedin],
+    ["Resumo profissional", active.summary],
+    ["Currículo", active.resume_file]
+  ].filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
+
+  app.innerHTML = `<div class="page-stack profile-v3">
+    <section class="page-intro">
+      <div><span class="eyebrow">IDENTIDADE PROFISSIONAL</span><h2>Seu perfil de candidatura</h2><p>O Ápice usa somente estes dados e seu currículo oficial para preparar formulários, respostas e apresentações.</p></div>
+      <div class="page-actions"><button data-tab="accounts" class="button secondary">${icon("lock")} Agências conectadas</button><button data-tab="settings" class="button primary">${icon("sliders")} Preferências de busca</button></div>
+    </section>
+
+    <section class="profile-score-band">
+      <div class="completion-ring compact" style="--completion:${completion}"><strong>${completion}%</strong><span>completo</span></div>
+      <div><span class="section-kicker">PRONTIDÃO DO PERFIL</span><h3>${missing.length ? `${missing.length} ponto(s) para completar` : "Perfil pronto para candidaturas"}</h3><p>${missing.length ? `Ainda faltam: ${escapeHtml(missing.join(", "))}.` : "Seus dados essenciais, currículo e memória já estão disponíveis para a IA."}</p></div>
+      <div class="profile-score-stats"><div><strong>${memory.answers?.length || 0}</strong><span>respostas memorizadas</span></div><div><strong>${profileData.profiles?.length || 0}</strong><span>perfil(is)</span></div><div><strong>${careerData.targetRoles?.length || 0}</strong><span>cargos-alvo</span></div></div>
+    </section>
+
+    <div class="profile-editor-grid">
+      <section class="surface profile-editor">
+        <div class="section-heading-row"><div><span class="section-kicker">DADOS PRINCIPAIS</span><h3>${escapeHtml(active.label || active.name || "Perfil ativo")}</h3><p>Edite aqui o que será reutilizado nos formulários.</p></div><span class="status-pill online"><i></i>Perfil ativo</span></div>
+        <div class="form-grid profile-form">
+          <label>Nome do perfil<input id="activeProfileLabel" value="${escapeHtml(active.label || "Principal")}"></label>
+          <label>Nome completo<input id="activeProfileName" value="${escapeHtml(active.name || "")}" autocomplete="name"></label>
+          <label>E-mail<input id="activeProfileEmail" type="email" value="${escapeHtml(active.email || "")}" autocomplete="email"></label>
+          <label>Telefone<input id="activeProfilePhone" value="${escapeHtml(active.phone || "")}" autocomplete="tel"></label>
+          <label class="field-wide">LinkedIn<input id="activeProfileLinkedin" value="${escapeHtml(active.linkedin || "")}" placeholder="https://www.linkedin.com/in/..."></label>
+          <label>Cidade<input id="activeProfileCity" value="${escapeHtml(active.city || "")}"></label>
+          <label>Estado<input id="activeProfileState" value="${escapeHtml(active.state || "")}"></label>
+          <label>País<input id="activeProfileCountry" value="${escapeHtml(active.country || "Brasil")}"></label>
+          <label class="field-wide">Resumo profissional<textarea id="activeProfileSummary" rows="7">${escapeHtml(active.summary || "")}</textarea></label>
+        </div>
+        <div class="form-footer"><span id="profileSaveStatus">Alterações são salvas apenas nesta conta.</span><button id="saveActiveProfile" class="button primary">${icon("save")} Salvar perfil</button></div>
+      </section>
+
+      <section class="surface resume-manager">
+        <div class="section-heading-row"><div><span class="section-kicker">CURRÍCULO OFICIAL</span><h3>Arquivo usado nas vagas</h3></div>${icon("file-text")}</div>
+        <div class="resume-file-card">
+          <span>${icon("file-text")}</span>
+          <div><strong>${escapeHtml(fileName(active.resume_file || careerData.applicationPositioning?.resumeFile || ""))}</strong><small>${active.resume_file ? "Vinculado ao perfil ativo" : "Envie o currículo principal"}</small></div>
+          <span class="state-chip ${active.resume_file ? "success" : "warning"}">${active.resume_file ? "Pronto" : "Pendente"}</span>
+        </div>
+        <label class="upload-dropzone" for="profileResumeFileUpload">
+          ${icon("upload")}<strong>Escolher novo currículo</strong><span>PDF, DOC, DOCX, TXT ou MD</span>
+          <input id="profileResumeFileUpload" type="file" accept=".pdf,.doc,.docx,.txt,.md">
+        </label>
+        <label>Complemento para a IA<textarea id="profileResumeText" rows="6" placeholder="Cole experiências, cursos ou resultados que precisam ser entendidos pela IA."></textarea></label>
+        <button id="uploadProfileResumeV3" class="button primary full">${icon("upload")} Atualizar currículo</button>
+        <div class="truth-note">${icon("shield")}<p><strong>Base verdadeira</strong><span>O Ápice pode adaptar a apresentação, mas nunca inventa experiência, formação ou competência.</span></p></div>
+      </section>
+    </div>
+
+    <div class="profile-intelligence-grid">
+      <section class="surface strengths-panel">
+        <div class="section-heading-row"><div><span class="section-kicker">POSICIONAMENTO</span><h3>Forças que a IA deve destacar</h3></div>${icon("sparkles")}</div>
+        <div class="strength-list">${(careerData.strengths || []).slice(0, 8).map((item) => `<div>${icon("check-circle")}<span>${escapeHtml(item)}</span></div>`).join("") || `<div class="empty-mini">Complete seu currículo para gerar forças profissionais.</div>`}</div>
+      </section>
+      <section class="surface target-role-panel">
+        <div class="section-heading-row"><div><span class="section-kicker">CARGOS-ALVO</span><h3>Buscas alinhadas ao currículo</h3></div><button data-tab="settings" class="text-button">Editar ${icon("arrow-right")}</button></div>
+        <div class="pill-cloud">${(careerData.targetRoles || []).map((role) => `<span>${escapeHtml(role)}</span>`).join("")}</div>
+      </section>
+    </div>
+
+    <section class="surface memory-panel">
+      <div class="section-heading-row"><div><span class="section-kicker">MEMÓRIA DE CANDIDATURA</span><h3>Respostas que o Ápice já sabe</h3><p>Quando uma vaga pedir algo novo, a resposta aprovada fica disponível para as próximas.</p></div><span class="soft-badge">${memory.answers?.length || 0} respostas</span></div>
+      <div class="memory-table">${(memory.answers || []).map((answer) => `<div><span>${escapeHtml(answer.question_text || answer.question_key)}</span><strong>${escapeHtml(answer.answer_text)}</strong><small>${escapeHtml(answer.category || "Geral")}</small></div>`).join("") || `<div class="empty-mini">Nenhuma resposta memorizada. A IA perguntará quando encontrar um campo novo.</div>`}</div>
+    </section>
+
+    <section class="surface profiles-manager">
+      <div class="section-heading-row"><div><span class="section-kicker">MULTIUSUÁRIO</span><h3>Perfis desta conta</h3><p>Cada pessoa mantém currículo, respostas e candidaturas separados.</p></div><button id="toggleNewProfile" class="button secondary">${icon("plus")} Novo perfil</button></div>
+      <div class="profile-card-grid">${(profileData.profiles || []).map((profile) => `<article class="profile-summary-card ${Number(profile.is_active) === 1 ? "active" : ""}">
+        <span class="account-avatar">${escapeHtml(initials(profile.name))}</span><div><strong>${escapeHtml(profile.label || profile.name)}</strong><small>${escapeHtml(profile.name)} · ${escapeHtml(profile.email || "e-mail pendente")}</small></div>
+        <span class="soft-badge">${profile.memory_count || 0} respostas</span>
+        <div class="profile-card-actions">${Number(profile.is_active) === 1 ? `<span class="state-chip success">Ativo</span>` : `<button data-activate-profile="${profile.id}">Ativar</button>`}${(profileData.profiles || []).length > 1 ? `<button class="danger-text" data-delete-profile="${profile.id}" title="Excluir perfil">${icon("trash")}</button>` : ""}</div>
+      </article>`).join("")}</div>
+      <div id="newProfileForm" class="new-profile-form hidden">
+        <div class="form-grid"><label>Nome do perfil<input id="profileLabel" placeholder="Ex.: Perfil principal"></label><label>Nome completo<input id="profileName"></label><label>E-mail<input id="profileEmail" type="email"></label><label>Telefone<input id="profilePhone"></label><label>Cidade<input id="profileCity" value="Curitiba"></label><label>Estado<input id="profileState" value="PR"></label></div>
+        <button id="createProfileV3" class="button primary">Criar e ativar perfil</button>
+      </div>
+    </section>
+  </div>`;
+
+  document.querySelector("#saveActiveProfile").onclick = async () => {
+    if (!active.id) return toast("Nenhum perfil ativo foi encontrado.", "error");
+    const payload = {
+      label: document.querySelector("#activeProfileLabel").value,
+      name: document.querySelector("#activeProfileName").value,
+      email: document.querySelector("#activeProfileEmail").value,
+      phone: document.querySelector("#activeProfilePhone").value,
+      linkedin: document.querySelector("#activeProfileLinkedin").value,
+      city: document.querySelector("#activeProfileCity").value,
+      state: document.querySelector("#activeProfileState").value,
+      country: document.querySelector("#activeProfileCountry").value,
+      summary: document.querySelector("#activeProfileSummary").value,
+      resume_file: active.resume_file || "",
+      is_active: true
+    };
+    await json(`/api/profiles/${active.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    toast("Perfil atualizado.", "success");
+    await profilePage();
+  };
+  document.querySelector("#uploadProfileResumeV3").onclick = async () => {
+    if (!active.id) return toast("Ative um perfil antes de enviar currículo.", "error");
+    const file = document.querySelector("#profileResumeFileUpload").files?.[0];
+    const text = document.querySelector("#profileResumeText").value.trim();
+    if (!file && !text) return toast("Escolha um arquivo ou informe um complemento.", "info");
+    await json(`/api/profiles/${active.id}/resume`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileName: file?.name || "curriculo.md", base64: file ? await fileToBase64(file) : "", text }) });
+    toast("Currículo atualizado no perfil ativo.", "success");
+    await profilePage();
+  };
+  document.querySelector("#toggleNewProfile").onclick = () => document.querySelector("#newProfileForm").classList.toggle("hidden");
+  document.querySelector("#createProfileV3").onclick = async () => {
+    const name = document.querySelector("#profileName").value.trim();
+    if (!name) return toast("Informe o nome completo.", "info");
+    await json("/api/profiles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      label: document.querySelector("#profileLabel").value || name,
+      name,
+      email: document.querySelector("#profileEmail").value,
+      phone: document.querySelector("#profilePhone").value,
+      city: document.querySelector("#profileCity").value,
+      state: document.querySelector("#profileState").value,
+      country: "Brasil",
+      is_active: true
+    }) });
+    toast("Novo perfil criado e ativado.", "success");
+    await profilePage();
+  };
+  document.querySelectorAll("[data-activate-profile]").forEach((button) => button.addEventListener("click", async () => {
+    await json(`/api/profiles/${button.dataset.activateProfile}/activate`, { method: "POST" });
+    toast("Perfil ativado.", "success");
+    await profilePage();
+  }));
+  document.querySelectorAll("[data-delete-profile]").forEach((button) => button.addEventListener("click", async () => {
+    if (!confirm("Excluir este perfil e as respostas memorizadas dele?")) return;
+    await json(`/api/profiles/${button.dataset.deleteProfile}`, { method: "DELETE" });
+    toast("Perfil excluído.", "success");
+    await profilePage();
+  }));
+  refreshIcons(app);
+}
+
+function stagesForApplication(row) {
+  const stages = [];
+  const sent = isSentApplication(row);
+  const authorized = isAuthorizedApplication(row);
+  const needsAttention = Number(row.latest_requires_action || 0) === 1
+    || Boolean(String(row.next_action || "").trim())
+    || row.application_status === "Aguardando resposta do usuário"
+    || ["acao_necessaria", "requer_canal"].includes(String(row.authorization_status || ""));
+  if (isAwaitingAuthorization(row)) stages.push("authorization");
+  if (!sent && authorized) stages.push("processing");
+  if (needsAttention) stages.push("attention");
+  if (sent) stages.push("sent");
+  if (sent && String(row.pipeline_outcome || "") === "negativa") stages.push("negative");
+  if (sent && String(row.pipeline_outcome || "") !== "negativa" && Number(row.pipeline_stage || 1) >= 2) stages.push("positive");
+  if (String(row.availability_status || "") === "fechada") stages.push("closed");
+  return stages;
+}
+
+function showAutomationDrawer(data) {
+  document.querySelector("#automationOverlay")?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "automationOverlay";
+  overlay.className = "automation-overlay";
+  overlay.innerHTML = `<button class="automation-backdrop" data-close-automation aria-label="Fechar assistente"></button>
+    <aside class="automation-drawer" role="dialog" aria-modal="true" aria-labelledby="automationTitle">
+      <div class="automation-drawer-head">
+        <div><span class="section-kicker">ÁPICE IA</span><h2 id="automationTitle">Preparação da candidatura</h2><p>Veja o que foi preenchido, o que falta e qual é o próximo passo real.</p></div>
+        <button class="icon-button" data-close-automation aria-label="Fechar">${icon("x")}</button>
+      </div>
+      <div class="automation-drawer-body">${renderAutomationResult(data)}</div>
+    </aside>`;
+  app.appendChild(overlay);
+  overlay.querySelectorAll("[data-close-automation]").forEach((button) => button.addEventListener("click", () => overlay.remove()));
+  refreshIcons(overlay);
+}
+
+async function applicationsV3(initialMessage = "") {
+  const [rows, gmail] = await Promise.all([json("/api/applications"), json("/api/gmail/status")]);
+  const filters = getSavedFilters("applications-v3", { q: "", source: "all", work: "all", availability: "all", minScore: 0, stage: "all" });
+  const sources = uniqueSources(rows);
+  const workModels = uniqueValues(rows, "work_model");
+  const stageLabels = {
+    all: "Todas",
+    authorization: "Autorizar",
+    processing: "IA preparando",
+    attention: "Precisa de você",
+    sent: "Candidatadas",
+    positive: "Avançaram",
+    negative: "Não selecionadas",
+    closed: "Encerradas"
+  };
+  const stageCounts = Object.keys(stageLabels).reduce((acc, id) => {
+    acc[id] = id === "all" ? rows.length : rows.filter((row) => stagesForApplication(row).includes(id)).length;
+    return acc;
+  }, {});
+  const sentCount = stageCounts.sent || 0;
+  const awaitingCount = stageCounts.authorization || 0;
+  const attentionCount = stageCounts.attention || 0;
+  const positiveCount = stageCounts.positive || 0;
+  const gmailTone = gmail.rateLimited ? "limited" : gmail.connected ? "online" : "offline";
+
+  app.innerHTML = `<div class="page-stack applications-v3">
+    <section class="page-intro">
+      <div><span class="eyebrow">PIPELINE DE CANDIDATURAS</span><h2>Autorize, acompanhe e aja no momento certo</h2><p>Aprovar escolhe a vaga. Autorizar libera a IA. Só um envio confirmado entra no histórico.</p></div>
+      <div class="page-actions">
+        <span class="status-pill ${gmailTone}"><i></i>Gmail ${gmail.connected ? "conectado" : "desconectado"}</span>
+        <button id="syncApplicationsGmail" class="button secondary">${icon("refresh")} Atualizar retornos</button>
+        <button id="selectVisibleApplications" class="button secondary">${icon("check")} Selecionar exibidas</button>
+        <button id="authorizeApplicationsV3" class="button primary">${icon("wand")} Autorizar IA <span id="applicationSelectionCount">0</span></button>
+      </div>
+    </section>
+
+    <section class="compact-stat-strip application-stats">
+      <button data-application-stage-shortcut="authorization"><strong>${awaitingCount}</strong><span>aguardando autorização</span></button>
+      <button data-application-stage-shortcut="processing"><strong>${stageCounts.processing || 0}</strong><span>em preparação</span></button>
+      <button data-application-stage-shortcut="sent"><strong>${sentCount}</strong><span>candidaturas reais</span></button>
+      <button data-application-stage-shortcut="positive"><strong>${positiveCount}</strong><span>avanços</span></button>
+      <button data-application-stage-shortcut="attention"><strong>${attentionCount}</strong><span>precisam de você</span></button>
+    </section>
+
+    <div id="applicationActionResult" class="note ${initialMessage ? "" : "hidden"}">${initialMessage}</div>
+
+    <section class="authorization-guide">
+      <span>${icon("shield")}</span>
+      <div><strong>Automação com rastreabilidade</strong><p>Após sua autorização, o Ápice prepara respostas, reutiliza seu currículo, abre a fonte oficial e informa se concluiu, se falta algum dado ou se o site exige sua intervenção.</p></div>
+      <button data-tab="profile" class="text-button">Revisar dados do perfil ${icon("arrow-right")}</button>
+    </section>
+
+    <section class="surface pipeline-workbench">
+      <div class="stage-tabs application-stage-tabs" id="applicationStageTabsV3">
+        ${Object.entries(stageLabels).map(([id, label]) => `<button data-application-stage="${id}" class="${filters.stage === id ? "active" : ""}"><span>${escapeHtml(label)}</span><strong>${stageCounts[id] || 0}</strong></button>`).join("")}
+      </div>
+      <div class="primary-filter-row application-filter-row">
+        <label class="search-field">${icon("search")}<input id="applicationSearchV3" value="${escapeHtml(filters.q)}" placeholder="Buscar vaga, empresa, fonte ou status"></label>
+        <label>Fonte<select id="applicationSourceV3">${optionList(sources, filters.source, "Todas as fontes")}</select></label>
+        <label>Modelo<select id="applicationWorkV3">${optionList(workModels, filters.work, "Todos")}</select></label>
+        <label>Disponibilidade<select id="applicationAvailabilityV3"><option value="all">Todas</option><option value="aberta" ${filters.availability === "aberta" ? "selected" : ""}>Aberta</option><option value="fechada" ${filters.availability === "fechada" ? "selected" : ""}>Fechada</option><option value="indefinida" ${filters.availability === "indefinida" ? "selected" : ""}>Indefinida</option><option value="nao_verificado" ${filters.availability === "nao_verificado" ? "selected" : ""}>Não verificada</option></select></label>
+        <label>Nota mínima<input id="applicationMinScoreV3" type="number" min="0" max="100" value="${Number(filters.minScore || 0)}"></label>
+        <button id="clearApplicationFiltersV3" class="button ghost">${icon("x")} Limpar</button>
+      </div>
+    </section>
+
+    <div class="result-heading"><div><strong id="visibleApplicationsCount">0</strong><span>candidaturas exibidas</span></div><div class="result-heading-actions"><button id="checkAvailabilityV3" class="text-button">${icon("activity")} Verificar vagas abertas</button><button data-tab="returns" class="text-button">${icon("history")} Histórico do Gmail</button></div></div>
+    <div id="applicationsV3Mount" data-testid="applications-grid"></div>
+  </div>`;
+
+  const mount = document.querySelector("#applicationsV3Mount");
+  const readFilters = () => ({
+    q: document.querySelector("#applicationSearchV3").value.trim(),
+    source: document.querySelector("#applicationSourceV3").value,
+    work: document.querySelector("#applicationWorkV3").value,
+    availability: document.querySelector("#applicationAvailabilityV3").value,
+    minScore: Number(document.querySelector("#applicationMinScoreV3").value || 0),
+    stage: document.querySelector("#applicationStageTabsV3 button.active")?.dataset.applicationStage || "all"
+  });
+  const updateSelection = () => {
+    const selected = [...document.querySelectorAll("#applicationsV3Mount .application-check:checked")];
+    const authorizable = selected.filter((input) => input.closest(".application-card")?.querySelector("[data-authorize]")).length;
+    document.querySelector("#applicationSelectionCount").textContent = String(selected.length);
+    document.querySelector("#authorizeApplicationsV3").disabled = !selected.length || !authorizable;
+  };
+  const renderRows = () => {
+    const active = readFilters();
+    saveFilters("applications-v3", active);
+    const visible = rows.filter((row) => {
+      if (!includesSearch(row, active.q)) return false;
+      if (active.source !== "all" && sourceName(row) !== active.source) return false;
+      if (active.work !== "all" && String(row.work_model) !== active.work) return false;
+      if (active.availability !== "all" && String(row.availability_status || "nao_verificado") !== active.availability) return false;
+      if (Number(row.fit_score || 0) < active.minScore) return false;
+      if (active.stage !== "all" && !stagesForApplication(row).includes(active.stage)) return false;
+      return true;
+    });
+    document.querySelector("#visibleApplicationsCount").textContent = String(visible.length);
+    mount.innerHTML = visible.length
+      ? `<div class="opportunity-grid">${visible.map((row) => applicationCard(row, isSentApplication(row) ? "sent" : "approved")).join("")}</div>`
+      : rows.length
+        ? `<div class="empty-state"><span>${icon("filter")}</span><h3>Nenhuma candidatura nesta etapa</h3><p>Ajuste os filtros ou escolha outra etapa do pipeline.</p></div>`
+        : `<div class="empty-state fresh-start"><span>${icon("briefcase")}</span><h3>Seu pipeline está pronto para começar</h3><p>Você ainda não aprovou nenhuma vaga. Vá ao radar, escolha oportunidades e elas aparecerão aqui aguardando sua autorização.</p><button data-tab="jobs" class="button primary">Ver vagas disponíveis ${icon("arrow-right")}</button></div>`;
+    mount.querySelectorAll(".application-check").forEach((input) => input.addEventListener("change", updateSelection));
+    updateSelection();
+    refreshIcons(mount);
+  };
+
+  document.querySelectorAll("[data-application-stage]").forEach((button) => button.addEventListener("click", () => {
+    document.querySelectorAll("[data-application-stage]").forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+    renderRows();
+  }));
+  document.querySelectorAll("[data-application-stage-shortcut]").forEach((button) => button.addEventListener("click", () => {
+    const target = document.querySelector(`[data-application-stage="${button.dataset.applicationStageShortcut}"]`);
+    target?.click();
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }));
+  document.querySelectorAll("#applicationSearchV3, #applicationSourceV3, #applicationWorkV3, #applicationAvailabilityV3, #applicationMinScoreV3").forEach((element) => element.addEventListener("input", renderRows));
+  document.querySelector("#clearApplicationFiltersV3").onclick = () => {
+    localStorage.removeItem(filterKey("applications-v3"));
+    applicationsV3(initialMessage);
+  };
+  document.querySelector("#selectVisibleApplications").onclick = () => {
+    const checks = [...document.querySelectorAll("#applicationsV3Mount .application-check")];
+    const shouldSelect = checks.some((input) => !input.checked);
+    checks.forEach((input) => input.checked = shouldSelect);
+    updateSelection();
+  };
+  document.querySelector("#authorizeApplicationsV3").onclick = async () => {
+    const ids = [...document.querySelectorAll("#applicationsV3Mount .application-check:checked")]
+      .filter((input) => input.closest(".application-card")?.querySelector("[data-authorize]"))
+      .map((input) => Number(input.value)).filter(Boolean);
+    if (!ids.length) return toast("Selecione candidaturas que estejam aguardando autorização.", "info");
+    try {
+      const data = await json("/api/applications/authorize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+      toast(`${data.authorized} candidatura(s) autorizada(s).`, "success");
+      await applicationsV3(`<strong>IA autorizada para ${data.authorized} candidatura(s).</strong><p>O resultado detalhado está aberto ao lado.</p>`);
+      showAutomationDrawer(data);
+    } catch (error) {
+      toast(escapeHtml(error.message), "error");
+    }
+  };
+  document.querySelector("#checkAvailabilityV3").onclick = async () => {
+    const ids = [...document.querySelectorAll("#applicationsV3Mount .application-check:checked")].map((input) => Number(input.value)).filter(Boolean);
+    const result = await json("/api/applications/check-availability", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+    toast(`${result.checked} vaga(s) verificadas: ${result.open} abertas e ${result.closed} encerradas.`, "success");
+    await applicationsV3();
+  };
+  document.querySelector("#syncApplicationsGmail").onclick = async () => {
+    try {
+      const result = await json("/api/gmail/sync", { method: "POST" });
+      toast(`${result.matched || 0} retorno(s) vinculado(s) às candidaturas.`, "success");
+      await applicationsV3();
+    } catch (error) {
+      toast(escapeHtml(error.message), "error");
+    }
+  };
+  renderRows();
+  refreshIcons(app);
+}
+
+async function jobsV3(initialMessage = "") {
+  const rows = await json("/api/jobs");
+  const filters = getSavedFilters("jobs-v3", {
+    q: "",
+    source: "all",
+    work: "all",
+    status: "all",
+    minScore: 0,
+    minSalary: 0,
+    directOnly: false,
+    hideDuplicates: true,
+    sort: "fit"
+  });
+  const sources = uniqueSources(rows);
+  const workModels = uniqueValues(rows, "work_model");
+  const statuses = uniqueValues(rows, "status");
+  const directCount = rows.filter(hasDirectJobUrl).length;
+  const recommendedCount = rows.filter((row) => Number(row.fit_score || 0) >= 85).length;
+  const salaryCount = rows.filter((row) => monthlySalaryValue(row.salary) > 0).length;
+
+  app.innerHTML = `<div class="page-stack jobs-v3">
+    <section class="page-intro">
+      <div><span class="eyebrow">RADAR DE OPORTUNIDADES</span><h2>Escolha as vagas com maior potencial</h2><p>As vagas aprovadas saem desta tela e entram em Candidaturas aguardando sua autorização.</p></div>
+      <div class="page-actions">
+        <button id="scanJobsV3" class="button secondary">${icon("refresh")} Atualizar busca</button>
+        <button id="selectVisibleJobs" class="button secondary">${icon("check")} Selecionar exibidas</button>
+        <button id="approveSelectedJobsV3" class="button primary">${icon("wand")} Aprovar <span id="jobSelectionCount">0</span></button>
+      </div>
+    </section>
+
+    <section class="compact-stat-strip">
+      <div><strong>${rows.length}</strong><span>vagas disponíveis</span></div>
+      <div><strong>${directCount}</strong><span>links diretos</span></div>
+      <div><strong>${recommendedCount}</strong><span>nota 85 ou mais</span></div>
+      <div><strong>${salaryCount}</strong><span>salário informado</span></div>
+    </section>
+
+    <div id="jobActionResult" class="note ${initialMessage ? "" : "hidden"}">${initialMessage}</div>
+
+    <section class="surface filter-workbench">
+      <div class="primary-filter-row">
+        <label class="search-field">${icon("search")}<input id="jobSearchV3" value="${escapeHtml(filters.q)}" placeholder="Buscar cargo, empresa, cidade ou palavra-chave"></label>
+        <label>Fonte<select id="jobSourceV3">${optionList(sources, filters.source, "Todas as fontes")}</select></label>
+        <label>Modelo<select id="jobWorkV3">${optionList(workModels, filters.work, "Todos os modelos")}</select></label>
+        <label>Ordenar<select id="jobSortV3"><option value="fit" ${filters.sort === "fit" ? "selected" : ""}>Maior aderência</option><option value="chance" ${filters.sort === "chance" ? "selected" : ""}>Maior chance</option><option value="salary" ${filters.sort === "salary" ? "selected" : ""}>Maior salário</option><option value="newest" ${filters.sort === "newest" ? "selected" : ""}>Mais recentes</option></select></label>
+      </div>
+      <details class="filter-details">
+        <summary>${icon("sliders")} Filtros avançados <span id="activeJobFilters"></span>${icon("chevron-down")}</summary>
+        <div class="advanced-filter-grid">
+          <label>Classificação<select id="jobStatusV3">${optionList(statuses, filters.status, "Todas")}</select></label>
+          <label>Nota mínima<input id="jobMinScoreV3" type="number" min="0" max="100" value="${Number(filters.minScore || 0)}"></label>
+          <label>Salário-base mínimo<input id="jobMinSalaryV3" type="number" min="0" step="500" value="${Number(filters.minSalary || 0)}"></label>
+          <label class="switch-line"><input id="jobDirectV3" type="checkbox" ${filters.directOnly ? "checked" : ""}><span><strong>Somente link direto</strong><small>Oculta páginas de pesquisa e fontes sem formulário.</small></span></label>
+          <label class="switch-line"><input id="jobDuplicatesV3" type="checkbox" ${filters.hideDuplicates ? "checked" : ""}><span><strong>Ocultar duplicadas</strong><small>Exibe apenas uma oportunidade de cada grupo.</small></span></label>
+          <button id="clearJobFiltersV3" class="button ghost">${icon("x")} Limpar filtros</button>
+        </div>
+      </details>
+    </section>
+
+    <details class="surface link-importer-panel">
+      <summary>${icon("link")} Tenho o link direto de uma vaga <span>Adicionar ao radar</span>${icon("chevron-down")}</summary>
+      ${realLinkImporter("jobsV3", () => jobsV3("<strong>Link oficial importado.</strong><p>A vaga já pode ser analisada e aprovada.</p>"))}
+    </details>
+
+    <div class="result-heading"><div><strong id="visibleJobsCount">0</strong><span>oportunidades exibidas</span></div><p id="jobFilterSummary">Ordenadas pelo seu potencial</p></div>
+    <div id="jobsV3Mount" data-testid="jobs-grid"></div>
+  </div>`;
+
+  const mount = document.querySelector("#jobsV3Mount");
+  const readFilters = () => ({
+    q: document.querySelector("#jobSearchV3").value.trim(),
+    source: document.querySelector("#jobSourceV3").value,
+    work: document.querySelector("#jobWorkV3").value,
+    status: document.querySelector("#jobStatusV3").value,
+    minScore: Number(document.querySelector("#jobMinScoreV3").value || 0),
+    minSalary: Number(document.querySelector("#jobMinSalaryV3").value || 0),
+    directOnly: document.querySelector("#jobDirectV3").checked,
+    hideDuplicates: document.querySelector("#jobDuplicatesV3").checked,
+    sort: document.querySelector("#jobSortV3").value
+  });
+  const updateSelection = () => {
+    const count = document.querySelectorAll("#jobsV3Mount .job-check:checked").length;
+    document.querySelector("#jobSelectionCount").textContent = String(count);
+    document.querySelector("#approveSelectedJobsV3").disabled = count === 0;
+  };
+  const renderRows = () => {
+    const active = readFilters();
+    saveFilters("jobs-v3", active);
+    let visible = rows.filter((row) => {
+      if (!includesSearch(row, active.q)) return false;
+      if (active.source !== "all" && sourceName(row) !== active.source) return false;
+      if (active.work !== "all" && String(row.work_model) !== active.work) return false;
+      if (active.status !== "all" && String(row.status) !== active.status) return false;
+      if (Number(row.fit_score || 0) < active.minScore) return false;
+      if (active.minSalary && monthlySalaryValue(row.salary) < active.minSalary) return false;
+      if (active.directOnly && !hasDirectJobUrl(row)) return false;
+      return true;
+    });
+    if (active.hideDuplicates) {
+      const seenDuplicates = new Set();
+      visible = visible.filter((row) => {
+        const key = String(row.duplicate_key || "");
+        if (!key || Number(row.duplicate_count || 1) <= 1) return true;
+        if (seenDuplicates.has(key)) return false;
+        seenDuplicates.add(key);
+        return true;
+      });
+    }
+    visible = [...visible].sort((left, right) => {
+      if (active.sort === "newest") return Date.parse(String(right.found_at || "")) - Date.parse(String(left.found_at || ""));
+      if (active.sort === "salary") return monthlySalaryValue(right.salary) - monthlySalaryValue(left.salary) || Number(right.fit_score || 0) - Number(left.fit_score || 0);
+      if (active.sort === "chance") return Number(right.hire_chance_score || 0) - Number(left.hire_chance_score || 0) || Number(right.fit_score || 0) - Number(left.fit_score || 0);
+      return Number(right.fit_score || 0) - Number(left.fit_score || 0) || Number(right.job_quality_score || 0) - Number(left.job_quality_score || 0);
+    });
+    const activeCount = [active.source !== "all", active.work !== "all", active.status !== "all", active.minScore > 0, active.minSalary > 0, active.directOnly, active.hideDuplicates].filter(Boolean).length;
+    document.querySelector("#activeJobFilters").textContent = activeCount ? `${activeCount} ativos` : "";
+    document.querySelector("#visibleJobsCount").textContent = String(visible.length);
+    document.querySelector("#jobFilterSummary").textContent = visible.length ? `${visible.filter(hasDirectJobUrl).length} com candidatura direta · ${visible.filter((row) => Number(row.fit_score || 0) >= 85).length} recomendadas` : "Nenhuma vaga corresponde aos filtros";
+    mount.innerHTML = visible.length
+      ? `<div class="opportunity-grid">${visible.map(jobCard).join("")}</div>`
+      : `<div class="empty-state"><span>${icon("search")}</span><h3>Nenhuma vaga neste filtro</h3><p>Ajuste os critérios ou atualize a busca para encontrar novas oportunidades.</p><button id="emptyJobScan" class="button primary">Buscar vagas agora</button></div>`;
+    document.querySelector("#emptyJobScan")?.addEventListener("click", () => runScanAndRefresh("jobs"));
+    mount.querySelectorAll(".job-check").forEach((input) => input.addEventListener("change", updateSelection));
+    updateSelection();
+    refreshIcons(mount);
+  };
+
+  document.querySelector("#scanJobsV3").onclick = () => runScanAndRefresh("jobs");
+  bindRealLinkImporter("jobsV3", () => jobsV3("<strong>Link oficial importado.</strong><p>A vaga já pode ser analisada e aprovada.</p>"));
+  document.querySelector("#selectVisibleJobs").onclick = () => {
+    const checks = [...document.querySelectorAll("#jobsV3Mount .job-check")];
+    const shouldSelect = checks.some((input) => !input.checked);
+    checks.forEach((input) => input.checked = shouldSelect);
+    updateSelection();
+  };
+  document.querySelector("#clearJobFiltersV3").onclick = () => {
+    localStorage.removeItem(filterKey("jobs-v3"));
+    jobsV3(initialMessage);
+  };
+  document.querySelectorAll("#jobSearchV3, #jobSourceV3, #jobWorkV3, #jobStatusV3, #jobMinScoreV3, #jobMinSalaryV3, #jobDirectV3, #jobDuplicatesV3, #jobSortV3").forEach((element) => element.addEventListener("input", renderRows));
+  document.querySelector("#approveSelectedJobsV3").onclick = async () => {
+    const ids = [...document.querySelectorAll("#jobsV3Mount .job-check:checked")].map((input) => Number(input.value)).filter(Boolean);
+    if (!ids.length) return toast("Selecione pelo menos uma vaga.", "info");
+    const button = document.querySelector("#approveSelectedJobsV3");
+    button.disabled = true;
+    button.innerHTML = `${icon("refresh")} Aprovando...`;
+    refreshIcons(button);
+    try {
+      const data = await json("/api/jobs/approve-selected", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+      const skipped = (data.skipped || []).length;
+      toast(`${data.approved} vaga(s) aprovada(s)${skipped ? ` e ${skipped} ignorada(s) por falta de link direto` : ""}.`, "success");
+      currentTab = "applications";
+      updateShellState("applications");
+      await applicationsV3(`<strong>${data.approved} vaga(s) aprovada(s).</strong><p>Agora revise e autorize a IA para começar a preparação.</p>`);
+    } catch (error) {
+      toast(escapeHtml(error.message), "error");
+      button.disabled = false;
+      button.innerHTML = `${icon("wand")} Aprovar <span id="jobSelectionCount">${ids.length}</span>`;
+      refreshIcons(button);
+    }
+  };
+  renderRows();
+  refreshIcons(app);
+}
+
+function profileCompletion(profile = {}) {
+  const required = [profile.name, profile.email, profile.phone, profile.city, profile.state, profile.summary, profile.resume_file];
+  const useful = [profile.linkedin, profile.country, Number(profile.memory_count || 0) > 0];
+  const completed = [...required, ...useful].filter((value) => Boolean(String(value || "").trim())).length;
+  return Math.round((completed / (required.length + useful.length)) * 100);
+}
+
+function executiveMetric(label, value, detail, iconName, tone = "blue") {
+  return `<article class="executive-metric ${tone}">
+    <span class="metric-icon">${icon(iconName)}</span>
+    <div><small>${escapeHtml(label)}</small><strong>${escapeHtml(value ?? 0)}</strong><p>${escapeHtml(detail)}</p></div>
+  </article>`;
+}
+
+function pipelineStep(index, label, value, detail, tab, state = "") {
+  return `<button class="pipeline-step ${state}" data-tab="${escapeHtml(tab)}">
+    <span class="pipeline-index">${escapeHtml(index)}</span>
+    <div><strong>${escapeHtml(value ?? 0)}</strong><b>${escapeHtml(label)}</b><small>${escapeHtml(detail)}</small></div>
+    ${icon("arrow-right")}
+  </button>`;
+}
+
+function priorityRow(item, index) {
+  return `<article class="priority-row ${escapeHtml(item.tone)}">
+    <span class="priority-number">${String(index + 1).padStart(2, "0")}</span>
+    <div><small>${escapeHtml(item.priority)}</small><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.detail)}</p></div>
+    <button data-tab="${escapeHtml(item.tab)}">${escapeHtml(item.label)} ${icon("arrow-right")}</button>
+  </article>`;
+}
+
+function topOpportunityRow(row) {
+  return `<article class="top-opportunity-row">
+    <div class="compact-score"><strong>${escapeHtml(row.fit_score ?? "-")}</strong><span>aderência</span></div>
+    <div class="top-opportunity-main"><strong>${escapeHtml(row.title || "Vaga")}</strong><small>${escapeHtml(row.company || "Empresa a confirmar")} · ${escapeHtml(row.location || "Local a confirmar")}</small></div>
+    <div class="top-opportunity-meta"><span>${escapeHtml(row.salary || "Salário não informado")}</span><small>${escapeHtml(sourceName(row))}</small></div>
+    ${row.id ? `<button data-detail="${row.id}" title="Ver detalhes">${icon("arrow-right")}</button>` : ""}
+  </article>`;
+}
+
+async function dashboardV3() {
+  const [summary, gmail, sourceData, profileData] = await Promise.all([
+    json("/api/summary"),
+    json("/api/gmail/status"),
+    json("/api/sources"),
+    json("/api/profiles")
+  ]);
+  const pipeline = summary.pipeline || {};
+  const salary = summary.salary || {};
+  const momentum = summary.momentum || {};
+  const sourceRows = (sourceData.sources || []).slice(0, 5);
+  const suggestions = dashboardAiSuggestions(summary, gmail, sourceRows);
+  const recentEvents = (summary.recentRecruiterEvents || []).slice(0, 5);
+  const firstName = String(currentUser?.name || "").trim().split(/\s+/)[0] || "profissional";
+  const currentHour = Number(new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", hour12: false, timeZone: "America/Sao_Paulo" }).format(new Date()));
+  const greeting = currentHour < 12 ? "Bom dia" : currentHour < 18 ? "Boa tarde" : "Boa noite";
+  const gmailLimited = Boolean(gmail.rateLimited);
+  const gmailTone = gmailLimited ? "limited" : gmail.connected ? "online" : "offline";
+  const gmailLabel = gmailLimited ? "Em pausa temporária" : gmail.connected ? "Conectado" : "Desconectado";
+  const completion = profileCompletion(profileData.active || {});
+  const topJobs = (summary.topJobs || []).slice(0, 5);
+
+  app.innerHTML = `<div class="page-stack dashboard-v3">
+    <section class="welcome-panel">
+      <div>
+        <span class="eyebrow">INTELIGÊNCIA PARA SUA PRÓXIMA OPORTUNIDADE</span>
+        <h2>${greeting}, ${escapeHtml(firstName)}.</h2>
+        <p>O Ápice organiza as melhores vagas, prepara seus dados e mostra exatamente o que depende de você.</p>
+      </div>
+      <div class="welcome-actions">
+        <button id="dashboardScan" class="button light">${icon("search")} Buscar novas vagas</button>
+        <button data-tab="applications" class="button outline-light">Ver meu pipeline ${icon("arrow-right")}</button>
+      </div>
+      <div class="welcome-signal"><span>${icon("sparkles")}</span><div><strong>${suggestions.length} decisões organizadas</strong><small>Atualizado com vagas, perfil e Gmail</small></div></div>
+    </section>
+
+    <section class="metric-ribbon" aria-label="Indicadores principais">
+      ${executiveMetric("Vagas para avaliar", summary.availableJobs || 0, `${summary.gold || 0} oportunidades prioritárias`, "briefcase", "blue")}
+      ${executiveMetric("Aguardando autorização", summary.awaitingAuthorization || 0, "A IA ainda não iniciou", "clock", "gold")}
+      ${executiveMetric("Candidaturas reais", pipeline.actual || 0, "Envios com confirmação", "clipboard-check", "teal")}
+      ${executiveMetric("Avanços", pipeline.selected || 0, `${pipeline.responseRate || 0}% de retorno`, "trend", "green")}
+      ${executiveMetric("Ações necessárias", pipeline.actions || 0, "Pendências objetivas", "circle-alert", "orange")}
+    </section>
+
+    <div class="dashboard-lead-grid">
+      <section class="surface priority-panel">
+        <div class="section-heading-row">
+          <div><span class="section-kicker">ÁPICE IA</span><h3>O que merece sua atenção agora</h3><p>Recomendações ordenadas pelo impacto no seu processo seletivo.</p></div>
+          <span class="soft-badge">${suggestions.length} prioridades</span>
+        </div>
+        <div class="priority-list">${suggestions.slice(0, 4).map(priorityRow).join("")}</div>
+      </section>
+
+      <aside class="surface readiness-panel">
+        <div class="section-heading-row"><div><span class="section-kicker">PRONTIDÃO</span><h3>Seu sistema</h3></div><span class="status-pill ${gmailTone}"><i></i>${escapeHtml(gmailLabel)}</span></div>
+        <div class="completion-ring" style="--completion:${completion}"><strong>${completion}%</strong><span>perfil completo</span></div>
+        <div class="readiness-list">
+          <div><span>${icon("file-text")}</span><p><strong>${escapeHtml(fileName(profileData.active?.resume_file || ""))}</strong><small>Currículo principal</small></p></div>
+          <div><span>${icon("bot")}</span><p><strong>${summary.memoryAnswers || 0} respostas</strong><small>Memória de formulários</small></p></div>
+          <div><span>${icon("mail")}</span><p><strong>Gmail ${gmail.connected ? "ativo" : "pendente"}</strong><small>${gmail.lastSync?.completed_at ? `Atualizado em ${formatDayMonth(gmail.lastSync.completed_at)}` : "Sem leitura recente"}</small></p></div>
+        </div>
+        <button data-tab="profile" class="button secondary full">Completar meu perfil ${icon("arrow-right")}</button>
+      </aside>
+    </div>
+
+    <section class="surface pipeline-panel">
+      <div class="section-heading-row"><div><span class="section-kicker">FLUXO DIRETO</span><h3>Da descoberta ao retorno</h3></div><small class="updated-label">Sem etapas duplicadas</small></div>
+      <div class="pipeline-track">
+        ${pipelineStep("01", "Vagas", summary.availableJobs || 0, "Analisar e aprovar", "jobs", "discover")}
+        ${pipelineStep("02", "Autorização", summary.awaitingAuthorization || 0, "Liberar a IA", "applications", "authorize")}
+        ${pipelineStep("03", "Preparação", summary.authorized || 0, "Preencher e concluir", "applications", "prepare")}
+        ${pipelineStep("04", "Candidatadas", pipeline.actual || 0, "Monitorar respostas", "applications", "track")}
+      </div>
+    </section>
+
+    <div class="dashboard-analysis-grid">
+      <section class="surface performance-panel">
+        <div class="section-heading-row"><div><span class="section-kicker">RITMO</span><h3>Atividade dos últimos 14 dias</h3></div><span class="soft-badge">${momentum.applications7d || 0} envios · ${momentum.replies7d || 0} respostas em 7 dias</span></div>
+        ${activityPulseChart(summary.activityTrend || [])}
+      </section>
+      <section class="surface recruiter-panel">
+        <div class="section-heading-row"><div><span class="section-kicker">RECRUTADORES</span><h3>Retornos recentes</h3></div><button data-tab="applications" class="text-button">Ver todos ${icon("arrow-right")}</button></div>
+        <div class="event-feed">${recentEvents.map(recruiterEventRow).join("") || `<div class="empty-mini">Nenhuma resposta nova. O Gmail continuará monitorando.</div>`}</div>
+      </section>
+    </div>
+
+    <div class="dashboard-analysis-grid market-row">
+      <section class="surface salary-panel">
+        <div class="section-heading-row"><div><span class="section-kicker">REMUNERAÇÃO</span><h3>Faixa salarial das vagas</h3></div><span class="soft-badge">Meta ${formatMoney(salary.target || 3000)}</span></div>
+        <div class="salary-overview"><div><strong>${salary.atOrAboveTarget || 0}</strong><span>na meta</span></div><div><strong>${salary.notInformed || 0}</strong><span>sem salário</span></div><div><strong>${formatMoney(salary.medianMinimum || 0)}</strong><span>mediana</span></div></div>
+        ${salaryChart(salary.distribution || [])}
+      </section>
+      <section class="surface sources-panel">
+        <div class="section-heading-row"><div><span class="section-kicker">FONTES</span><h3>Canais com melhor sinal</h3></div><button data-tab="settings" class="text-button">Configurar ${icon("arrow-right")}</button></div>
+        <div class="source-performance">${sourceRows.map(sourcePerformanceRow).join("") || `<div class="empty-mini">As fontes aparecerão depois da próxima busca.</div>`}</div>
+      </section>
+    </div>
+
+    <section class="surface top-opportunities">
+      <div class="section-heading-row"><div><span class="section-kicker">MAIOR POTENCIAL</span><h3>Oportunidades para priorizar</h3><p>Ordenadas por aderência, qualidade do anúncio e risco.</p></div><button data-tab="jobs" class="button secondary">Ver todas as vagas ${icon("arrow-right")}</button></div>
+      <div class="top-opportunity-list">${topJobs.map(topOpportunityRow).join("") || `<div class="empty-state compact"><h3>Nenhuma vaga disponível</h3><p>Rode uma nova busca para alimentar esta seleção.</p></div>`}</div>
+    </section>
+  </div>`;
+
+  document.querySelector("#dashboardScan").onclick = () => runScanAndRefresh("dashboard");
+  refreshIcons(app);
+}
+
 async function logs() {
   const health = await json("/api/health");
   app.innerHTML = `<section class="notice-panel">
@@ -2924,20 +3980,21 @@ async function logs() {
 
 async function load(tab) {
   currentTab = tab || "dashboard";
-  document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
+  updateShellState(currentTab);
   try {
-    if (tab === "jobs") return jobs();
+    if (tab === "jobs") return jobsV3();
     if (tab === "approved") return applications();
     if (tab === "informal") return informal();
-    if (tab === "applications") return applications();
+    if (tab === "applications") return applicationsV3();
     if (tab === "returns") return returnsPage();
     if (tab === "sources") return sourcesPage();
     if (tab === "actions") return returnsPage();
     if (tab === "aiApply") return aiApplyPage();
     if (tab === "accounts") return accountsPage();
-    if (["profile", "profiles", "resume", "settings"].includes(tab)) return settings();
+    if (["profile", "profiles", "resume"].includes(tab)) return profilePage();
+    if (tab === "settings") return settingsV3();
     if (tab === "logs") return logs();
-    return dashboard();
+    return dashboardV3();
   } catch (error) {
     app.innerHTML = `<section class="notice-panel"><h2>Algo não carregou</h2><p>${escapeHtml(error.message)}</p><button data-tab="dashboard">Voltar ao painel</button></section>`;
     toast(escapeHtml(error.message), "error");
@@ -2948,12 +4005,43 @@ header.addEventListener("click", (event) => {
   const button = event.target.closest("[data-tab]");
   const theme = event.target.closest("#themeToggle");
   const logout = event.target.closest("#logoutButton");
+  const mobileMenu = event.target.closest("#mobileMenu");
+  const backdrop = event.target.closest("#sidebarBackdrop");
+  const globalScan = event.target.closest("#globalScan");
+  const globalSync = event.target.closest("#globalSync");
   if (button && currentUser) load(button.dataset.tab);
   if (theme) {
     const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
     localStorage.setItem("careerHunterTheme", next);
-    document.querySelector("#themeToggle").textContent = next === "dark" ? "Tema claro" : "Tema escuro";
+    theme.innerHTML = icon(next === "dark" ? "sun" : "moon");
+    refreshIcons(theme);
+  }
+  if (mobileMenu) {
+    document.querySelector("#appSidebar")?.classList.toggle("open");
+    document.querySelector("#sidebarBackdrop")?.classList.toggle("visible");
+  }
+  if (backdrop) {
+    document.querySelector("#appSidebar")?.classList.remove("open");
+    backdrop.classList.remove("visible");
+  }
+  if (globalScan) runScanAndRefresh(currentTab === "jobs" ? "jobs" : "dashboard");
+  if (globalSync) {
+    globalSync.disabled = true;
+    globalSync.innerHTML = `${icon("refresh")}<span>Atualizando...</span>`;
+    refreshIcons(globalSync);
+    json("/api/gmail/sync", { method: "POST" })
+      .then((result) => {
+        toast(`${result.matched || 0} retorno(s) atualizado(s) e ${result.jobsImported || 0} nova(s) vaga(s).`, "success");
+        return load(currentTab);
+      })
+      .catch((error) => toast(escapeHtml(error.message), "error"))
+      .finally(() => {
+        if (!document.body.contains(globalSync)) return;
+        globalSync.disabled = false;
+        globalSync.innerHTML = `${icon("refresh")}<span>Atualizar Gmail</span>`;
+        refreshIcons(globalSync);
+      });
   }
   if (logout) {
     json("/api/auth/logout", { method: "POST" }).finally(() => {
@@ -2984,16 +4072,17 @@ app.addEventListener("click", (event) => {
       .then(() => {
         toast("Vaga aprovada. Autorize a candidatura na próxima etapa.", "success");
         currentTab = "applications";
-        document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === "applications"));
-        return applications("<strong>Vaga aprovada.</strong><p>A IA aguarda sua autorização para começar.</p>");
+        updateShellState("applications");
+        return applicationsV3("<strong>Vaga aprovada.</strong><p>A IA aguarda sua autorização para começar.</p>");
       })
       .catch((error) => toast(escapeHtml(error.message), "error"));
   }
   if (authorize) {
     json("/api/applications/authorize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [Number(authorize.dataset.authorize)] }) })
-      .then((data) => {
+      .then(async (data) => {
         toast("Autorização registrada. A IA preparou o próximo passo permitido.", "success");
-        return applications(renderAutomationResult(data));
+        await applicationsV3("<strong>Autorização registrada.</strong><p>O resultado detalhado da IA está aberto ao lado.</p>");
+        showAutomationDrawer(data);
       })
       .catch((error) => toast(escapeHtml(error.message), "error"));
   }
@@ -3013,21 +4102,20 @@ app.addEventListener("click", (event) => {
   }
   if (accelerate) {
     openOfficialJob(accelerate.dataset.accelerateUrl);
-    aiApplyReturnTab = currentTab || "applications";
-    setAiApplyPrefill({
-      url: accelerate.dataset.accelerateUrl,
-      title: accelerate.dataset.accelerateTitle,
-      company: accelerate.dataset.accelerateCompany,
-      applicationId: accelerate.dataset.accelerateApplicationId,
-      autoLoad: true
-    });
-    load("aiApply");
+    const applicationId = Number(accelerate.dataset.accelerateApplicationId || 0);
+    if (applicationId) {
+      json("/api/applications/ai-apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [applicationId] }) })
+        .then((data) => showAutomationDrawer(data))
+        .catch((error) => toast(escapeHtml(error.message), "error"));
+    } else {
+      toast("A vaga oficial foi aberta. Aprove-a no painel para liberar o preenchimento com seus dados.", "info");
+    }
   }
   if (retry) {
     json("/api/applications/retry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [Number(retry.dataset.retry)] }) })
       .then(() => {
         toast("Candidatura recolocada para tentar novamente.", "success");
-        return applications();
+        return applicationsV3();
       })
       .catch((error) => toast(escapeHtml(error.message), "error"));
   }
@@ -3035,22 +4123,15 @@ app.addEventListener("click", (event) => {
     const url = String(aiApply.dataset.applicationUrl || "").trim();
     if (url && !isGoogleSearchUrl(url)) {
       openOfficialJob(url);
-      aiApplyReturnTab = currentTab || "applications";
-      setAiApplyPrefill({
-        url,
-        title: aiApply.dataset.applicationTitle,
-        company: aiApply.dataset.applicationCompany,
-        applicationId: aiApply.dataset.aiApply,
-        autoLoad: true,
-        autoPrepare: true
-      });
-      load("aiApply");
+      json("/api/applications/ai-apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [Number(aiApply.dataset.aiApply)] }) })
+        .then((data) => showAutomationDrawer(data))
+        .catch((error) => toast(escapeHtml(error.message), "error"));
       return;
     }
     json("/api/applications/ai-apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids: [Number(aiApply.dataset.aiApply)] }) })
       .then((data) => {
         toast("IA preparou a candidatura desta vaga.", "success");
-        return applications(renderAutomationResult(data));
+        showAutomationDrawer(data);
       })
       .catch((error) => toast(escapeHtml(error.message), "error"));
   }
@@ -3059,7 +4140,7 @@ app.addEventListener("click", (event) => {
     json("/api/applications/mark-sent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) })
       .then(() => {
         toast("Candidatura marcada como enviada.", "success");
-        return applications();
+        return applicationsV3();
       })
       .catch((error) => toast(escapeHtml(error.message), "error"));
   }
@@ -3080,7 +4161,7 @@ app.addEventListener("click", (event) => {
       body: JSON.stringify({ profileId: Number(capture.dataset.profileId), answers })
     }).then(() => {
       toast("Respostas salvas na memória do perfil.", "success");
-      return applications();
+      return applicationsV3();
     }).catch((error) => toast(escapeHtml(error.message), "error"));
   }
 });

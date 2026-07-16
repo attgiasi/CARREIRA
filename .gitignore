@@ -2,6 +2,9 @@ node_modules/
 dist/
 .env
 .env.gmail
+agent-settings.local.json
+deploy/oracle/.env.production
+deploy/oracle/backups/
 
 data/*.sqlite
 data/*.sqlite-*

@@ -14,21 +14,18 @@
     "gemini": { "enabled": false, "model": "CONFIGURE_IN_ENV" }
   },
   "profile": {
-    "name": "Giasi Mandela Silva",
-    "city": "Curitiba",
-    "state": "PR",
+    "name": "",
+    "city": "",
+    "state": "",
     "country": "Brasil",
-    "email": "att.giasi@gmail.com",
+    "email": "",
     "phone": "",
     "linkedin": "",
-    "maritalStatus": "Solteiro",
-    "summary": "Profissional com sólida experiência em atendimento, hospitalidade e operação, reconhecido por alto desempenho, excelência na experiência do cliente e desenvolvimento de equipes. Destaque operacional com promoção para Instrutor de Treinamento, atuando na capacitação de colaboradores, padronização de processos e melhoria contínua do atendimento. Forte capacidade de escuta ativa, resolução estratégica de demandas, construção de relacionamento, comunicação assertiva, leitura de perfil e personalização da experiência.",
+    "maritalStatus": "",
+    "summary": "",
     "education": {
-      "highestLevel": "superior_completo",
-      "degrees": [
-        "Administração de Empresas - Unicastelo (2010-2013)",
-        "Gestão de eventos e cerimonial público e privado - UEPG (2017-2018)"
-      ]
+      "highestLevel": "",
+      "degrees": []
     },
     "driverLicense": {
       "hasLicense": false,

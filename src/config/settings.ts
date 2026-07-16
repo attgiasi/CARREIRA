@@ -3,14 +3,16 @@ import path from "node:path";
 import { AgentSettings } from "../types.js";
 
 const settingsPath = path.resolve(process.cwd(), "agent-settings.json");
+const localSettingsPath = path.resolve(process.cwd(), "agent-settings.local.json");
 
 export function loadSettings(): AgentSettings {
-  const raw = fs.readFileSync(settingsPath, "utf8");
+  const source = fs.existsSync(localSettingsPath) ? localSettingsPath : settingsPath;
+  const raw = fs.readFileSync(source, "utf8");
   return JSON.parse(raw) as AgentSettings;
 }
 
 export function saveSettings(settings: AgentSettings): void {
-  fs.writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  fs.writeFileSync(localSettingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
 }
 
 export function ensureRuntimeFolders(): void {

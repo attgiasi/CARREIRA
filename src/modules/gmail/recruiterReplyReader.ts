@@ -354,7 +354,7 @@ function vacancyIds(message: ParsedMessage): string[] {
   return [...ids];
 }
 
-const stopWords = new Set(["para", "vaga", "de", "da", "do", "das", "dos", "em", "uma", "um", "empresa", "processo", "seletivo", "retorno", "voce", "giasi"]);
+const stopWords = new Set(["para", "vaga", "de", "da", "do", "das", "dos", "em", "uma", "um", "empresa", "processo", "seletivo", "retorno", "voce", "candidato"]);
 
 function tokens(value: string): Set<string> {
   return new Set(normalize(value).split(/[^a-z0-9]+/).filter((item) => item.length >= 3 && !stopWords.has(item)));

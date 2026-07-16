@@ -26,6 +26,7 @@ app.use((_req, res, next) => {
   next();
 });
 app.use(express.json({ limit: "12mb" }));
+app.use("/vendor/lucide", express.static(path.resolve(process.cwd(), "node_modules/lucide/dist/esm")));
 app.use(express.static(path.resolve(process.cwd(), "public")));
 app.use("/", dashboardRouter);
 app.use("/api", apiRouter);

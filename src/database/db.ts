@@ -17,6 +17,8 @@ function resolveDatabasePath(): string {
 }
 
 export class CareerDatabase {
+  private transactionDepth = 0;
+
   private constructor(private readonly db: Database) {}
 
   static async open(): Promise<CareerDatabase> {
@@ -140,7 +142,25 @@ export class CareerDatabase {
 
   run(sql: string, params: unknown[] = []): void {
     this.db.run(sql, params);
-    this.save();
+    if (this.transactionDepth === 0) this.save();
+  }
+
+  transaction<T>(action: () => T): T {
+    if (this.transactionDepth > 0) return action();
+
+    this.db.run("BEGIN");
+    this.transactionDepth += 1;
+    try {
+      const result = action();
+      this.db.run("COMMIT");
+      this.transactionDepth -= 1;
+      this.save();
+      return result;
+    } catch (error) {
+      this.db.run("ROLLBACK");
+      this.transactionDepth -= 1;
+      throw error;
+    }
   }
 
   query<T extends Record<string, unknown>>(sql: string, params: unknown[] = []): T[] {

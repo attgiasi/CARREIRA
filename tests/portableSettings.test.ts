@@ -6,16 +6,19 @@ import { exportSettings, importSettings } from "../src/config/portableSettings.j
 test("exportação para GitHub remove dados pessoais e credenciais", () => {
   const settings = loadSettings();
   const withUnsafeValue = structuredClone(settings);
+  withUnsafeValue.profile.name = "Pessoa de Teste";
+  withUnsafeValue.profile.email = "pessoa@example.com";
+  withUnsafeValue.profile.city = "Cidade de Teste";
   (withUnsafeValue.applications as Record<string, unknown>).apiKey = "nao-pode-sair";
 
   const exported = exportSettings(withUnsafeValue, "github");
   const raw = JSON.stringify(exported);
 
   assert.equal(exported.scope, "github");
-  assert.doesNotMatch(raw, /att\.giasi@gmail\.com/i);
-  assert.doesNotMatch(raw, /Giasi Mandela Silva/i);
+  assert.doesNotMatch(raw, /pessoa@example\.com/i);
+  assert.doesNotMatch(raw, /Pessoa de Teste/i);
   assert.doesNotMatch(raw, /nao-pode-sair/i);
-  assert.equal((exported.settings.profile as Record<string, unknown>).city, "Curitiba");
+  assert.equal((exported.settings.profile as Record<string, unknown>).city, "Cidade de Teste");
 });
 
 test("importação do arquivo para GitHub preserva os dados privados da conta", () => {
@@ -34,11 +37,12 @@ test("importação do arquivo para GitHub preserva os dados privados da conta", 
 
 test("backup privado inclui o perfil, mas nunca inclui chaves adicionadas ao JSON", () => {
   const settings = loadSettings();
+  settings.profile.name = "Pessoa de Teste";
   (settings.safety as Record<string, unknown>).refreshToken = "segredo";
 
   const exported = exportSettings(settings, "private");
   const raw = JSON.stringify(exported);
 
-  assert.match(raw, /Giasi Mandela Silva/);
+  assert.match(raw, /Pessoa de Teste/);
   assert.doesNotMatch(raw, /segredo/);
 });

@@ -2,6 +2,7 @@ node_modules
 dist
 .git
 .env
+agent-settings.local.json
 data/*.sqlite
 data/*.sqlite-*
 logs/*.jsonl
@@ -11,3 +12,5 @@ generated/cover-letters/*
 generated/application-packets/*
 generated/reports/*
 resumes/*.pdf
+deploy/oracle/.env.production
+deploy/oracle/backups/
