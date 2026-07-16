@@ -141,6 +141,8 @@ CREATE TABLE IF NOT EXISTS applications (
   generated_resume_path TEXT,
   cover_letter_path TEXT,
   approval_status TEXT,
+  authorization_status TEXT DEFAULT 'aguardando_autorizacao',
+  authorized_at TEXT,
   sent_by_agent INTEGER DEFAULT 0,
   source_platform TEXT,
   availability_status TEXT DEFAULT 'nao_verificado',

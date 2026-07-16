@@ -81,6 +81,8 @@ export class CareerDatabase {
       ["availability_closed_at", "TEXT"],
       ["pipeline_stage", "INTEGER DEFAULT 1"],
       ["pipeline_outcome", "TEXT DEFAULT 'sem_retorno'"],
+      ["authorization_status", "TEXT DEFAULT 'aguardando_autorizacao'"],
+      ["authorized_at", "TEXT"],
       ["recruiter_status", "TEXT"],
       ["last_recruiter_email_at", "TEXT"],
       ["next_action", "TEXT"],
@@ -88,6 +90,38 @@ export class CareerDatabase {
     ]);
     this.db.run("UPDATE applications SET created_at = COALESCE(created_at, CURRENT_TIMESTAMP), updated_at = COALESCE(updated_at, CURRENT_TIMESTAMP)");
     this.db.run("UPDATE applications SET pipeline_stage = COALESCE(pipeline_stage, 1), pipeline_outcome = COALESCE(pipeline_outcome, 'sem_retorno')");
+    this.db.run(`
+      UPDATE applications
+      SET authorization_status = CASE
+        WHEN sent_by_agent = 1 OR applied_at IS NOT NULL THEN 'concluida'
+        WHEN COALESCE(automation_mode, '') <> '' THEN 'autorizada'
+        ELSE 'aguardando_autorizacao'
+      END
+      WHERE authorization_status IS NULL OR trim(authorization_status) = ''
+    `);
+    this.db.run(`
+      UPDATE applications
+      SET authorization_status = 'concluida'
+      WHERE sent_by_agent = 1 OR applied_at IS NOT NULL
+    `);
+    this.db.run(`
+      UPDATE applications
+      SET authorization_status = 'acao_necessaria'
+      WHERE sent_by_agent = 0 AND applied_at IS NULL
+        AND trim(COALESCE(next_action, '')) <> ''
+    `);
+    this.db.run(`
+      UPDATE applications
+      SET authorization_status = 'requer_canal'
+      WHERE sent_by_agent = 0 AND applied_at IS NULL
+        AND trim(COALESCE(next_action, '')) = ''
+        AND application_status IN (
+          'Aguardando vaga real da fonte',
+          'Aguardando canal de candidatura',
+          'LinkedIn manual',
+          'Sem canal de candidatura visível no Indeed'
+        )
+    `);
     this.db.run("UPDATE jobs SET user_id = COALESCE(user_id, 1)");
     this.db.run("UPDATE informal_opportunities SET user_id = COALESCE(user_id, 1)");
     this.db.run("UPDATE candidate_profiles SET user_id = COALESCE(user_id, 1)");

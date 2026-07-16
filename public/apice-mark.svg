@@ -1,7 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="title">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
   <title id="title">Ápice</title>
-  <rect width="48" height="48" rx="10" fill="#10232e"/>
-  <path d="M11 34 23.8 10 37 34h-7.1l-6.2-12-6 12H11Z" fill="#ffffff"/>
-  <path d="M18.7 31h10.4l3.1 6H15.5l3.2-6Z" fill="#35b18a"/>
-  <circle cx="36.5" cy="11.5" r="3.5" fill="#f0b84a"/>
+  <rect width="64" height="64" rx="12" fill="#10252c"/>
+  <path d="M12 48 31.8 11 52 48H41.4L31.8 29.6 22.5 48H12Z" fill="#F7FAFB"/>
+  <path d="M21.2 43.4h21.6L47.7 52H16.6l4.6-8.6Z" fill="#35B18A"/>
+  <path d="M31.8 11 39 24.5l-7.2 5.1-7-5.1 7-13.5Z" fill="#E8EEF1"/>
+  <circle cx="49" cy="14" r="4.5" fill="#F0B84A"/>
 </svg>

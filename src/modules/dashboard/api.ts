@@ -327,7 +327,8 @@ async function runAutomationForApplications(userId: number, ids: number[], mode:
   if (approveBeforeRun) {
     db.run(
       `UPDATE applications
-       SET approval_status = ?, application_status = ?, user_profile_id = COALESCE(user_profile_id, ?),
+       SET approval_status = ?, authorization_status = 'autorizada', authorized_at = CURRENT_TIMESTAMP,
+           application_status = ?, user_profile_id = COALESCE(user_profile_id, ?),
            updated_at = CURRENT_TIMESTAMP,
            notes = COALESCE(notes, '') || ?
        WHERE user_id = ? AND id IN (${placeholders})`,
@@ -526,6 +527,24 @@ apiRouter.get("/summary", async (req, res) => {
       AND sent_by_agent = 0
       AND COALESCE(application_status, '') <> 'Candidatura enviada'
   `, [userId])[0]?.total ?? 0;
+  const awaitingAuthorization = db.query(`
+    SELECT COUNT(*) as total
+    FROM applications
+    WHERE user_id = ?
+      AND approval_status = 'aprovado_pelo_usuario'
+      AND sent_by_agent = 0
+      AND applied_at IS NULL
+      AND authorization_status = 'aguardando_autorizacao'
+  `, [userId])[0]?.total ?? 0;
+  const authorized = db.query(`
+    SELECT COUNT(*) as total
+    FROM applications
+    WHERE user_id = ?
+      AND approval_status = 'aprovado_pelo_usuario'
+      AND sent_by_agent = 0
+      AND applied_at IS NULL
+      AND authorization_status = 'autorizada'
+  `, [userId])[0]?.total ?? 0;
   const rejected = db.query("SELECT COUNT(*) as total FROM applications WHERE user_id = ? AND approval_status = 'rejeitado_pelo_usuario'", [userId])[0]?.total ?? 0;
   const sent = db.query("SELECT COUNT(*) as total FROM applications WHERE user_id = ? AND (application_status = 'Candidatura enviada' OR sent_by_agent = 1)", [userId])[0]?.total ?? 0;
   const waitingRealJob = db.query("SELECT COUNT(*) as total FROM applications WHERE user_id = ? AND application_status = 'Aguardando vaga real da fonte'", [userId])[0]?.total ?? 0;
@@ -673,6 +692,8 @@ apiRouter.get("/summary", async (req, res) => {
     applications,
     awaitingApproval,
     approved,
+    awaitingAuthorization,
+    authorized,
     rejected,
     sent,
     waitingRealJob,
@@ -1354,17 +1375,24 @@ apiRouter.post("/jobs/approve-selected", async (req, res) => {
 
   for (const row of rows) {
     const jobId = Number(row.id);
+    const source = String(row.source ?? "");
+    const url = String(row.url ?? "").trim();
+    if (!url || isGoogleSearchUrl(url) || assistedSources.has(source)) {
+      skipped.push({ id: jobId, reason: "Encontre e importe o link oficial da vaga antes de aprovar." });
+      continue;
+    }
     const exists = db.query<Record<string, unknown>>("SELECT id FROM applications WHERE user_id = ? AND job_id = ? LIMIT 1", [userId, jobId])[0];
     if (exists) {
       const applicationId = Number(exists.id);
       db.run(
         `UPDATE applications
-         SET approval_status = ?, application_status = ?, user_profile_id = COALESCE(user_profile_id, ?),
+         SET approval_status = ?, authorization_status = 'aguardando_autorizacao', authorized_at = NULL,
+             application_status = ?, user_profile_id = COALESCE(user_profile_id, ?),
              updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ?
          WHERE id = ? AND user_id = ?`,
         [
           "aprovado_pelo_usuario",
-          "Aprovada pelo usuário",
+          "Aguardando autorização",
           profile.id,
           `\nAprovada diretamente da aba Vagas em ${new Date().toISOString()}.`,
           applicationId,
@@ -1390,13 +1418,13 @@ apiRouter.post("/jobs/approve-selected", async (req, res) => {
     db.run(
       `INSERT INTO applications (
         user_id, job_id, user_profile_id, application_status, cv_version, generated_resume_path,
-        cover_letter_path, approval_status, sent_by_agent, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+        cover_letter_path, approval_status, authorization_status, sent_by_agent, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'aguardando_autorizacao', 0, ?)`,
       [
         userId,
         jobId,
         profile.id,
-        "Aprovada pelo usuário",
+        "Aguardando autorização",
         packet.cvVersion,
         packet.generatedResumePath,
         packet.coverLetterPath,
@@ -1474,8 +1502,8 @@ apiRouter.post("/applications/approve", async (req, res) => {
   const db = await CareerDatabase.open();
   for (const id of ids) {
     db.run(
-      "UPDATE applications SET approval_status = ?, application_status = ?, notes = COALESCE(notes, '') || ? WHERE id = ? AND user_id = ?",
-      ["aprovado_pelo_usuario", "Aprovada pelo usuário", `\nAprovada no painel em ${new Date().toISOString()}.`, id, userId]
+      "UPDATE applications SET approval_status = ?, authorization_status = 'aguardando_autorizacao', authorized_at = NULL, application_status = ?, notes = COALESCE(notes, '') || ? WHERE id = ? AND user_id = ?",
+      ["aprovado_pelo_usuario", "Aguardando autorização", `\nAprovada no painel em ${new Date().toISOString()}.`, id, userId]
     );
     db.run("UPDATE applications SET updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?", [id, userId]);
   }
@@ -1510,7 +1538,7 @@ apiRouter.post("/applications/mark-sent", async (req, res) => {
   const db = await CareerDatabase.open();
   for (const id of ids) {
     db.run(
-      "UPDATE applications SET approval_status = ?, application_status = ?, sent_by_agent = 1, applied_at = COALESCE(applied_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ? WHERE id = ? AND user_id = ?",
+      "UPDATE applications SET approval_status = ?, authorization_status = 'concluida', application_status = ?, sent_by_agent = 1, applied_at = COALESCE(applied_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ? WHERE id = ? AND user_id = ?",
       ["aprovado_pelo_usuario", "Candidatura enviada", `\nMarcada como enviada no painel em ${new Date().toISOString()}.`, id, userId]
     );
   }
@@ -1530,6 +1558,7 @@ apiRouter.post("/applications/retry", async (req, res) => {
     db.run(
       `UPDATE applications
        SET approval_status = ?, application_status = ?, sent_by_agent = 0,
+           authorization_status = 'aguardando_autorizacao', authorized_at = NULL,
            retry_count = COALESCE(retry_count, 0) + 1,
            last_attempt_at = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP,
@@ -1562,6 +1591,47 @@ apiRouter.post("/applications/auto-apply", async (req, res) => {
   }
   const result = await runAutomationForApplications(userId, ids, "candidatura_por_ia");
   res.json({ ok: true, modeLabel: "Candidatura por IA preparada", ...result });
+});
+
+apiRouter.post("/applications/authorize", async (req, res) => {
+  const userId = currentUserId(req);
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+  if (!ids.length) {
+    res.status(400).json({ error: "Nenhuma candidatura selecionada." });
+    return;
+  }
+  const db = await CareerDatabase.open();
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = db.query<Record<string, unknown>>(
+    `SELECT id FROM applications
+     WHERE user_id = ? AND id IN (${placeholders})
+       AND approval_status = 'aprovado_pelo_usuario'
+       AND authorization_status = 'aguardando_autorizacao'
+       AND sent_by_agent = 0 AND applied_at IS NULL`,
+    [userId, ...ids]
+  );
+  const authorizedIds = rows.map((row) => Number(row.id));
+  if (!authorizedIds.length) {
+    res.status(400).json({ error: "As candidaturas selecionadas não estão prontas para autorização." });
+    return;
+  }
+  const authorizedPlaceholders = authorizedIds.map(() => "?").join(",");
+  db.run(
+    `UPDATE applications
+     SET authorization_status = 'autorizada', authorized_at = CURRENT_TIMESTAMP,
+         application_status = 'Autorizada para candidatura', updated_at = CURRENT_TIMESTAMP,
+         notes = COALESCE(notes, '') || ?
+     WHERE user_id = ? AND id IN (${authorizedPlaceholders})`,
+    [`\nCandidatura autorizada pelo usuário em ${new Date().toISOString()}.`, userId, ...authorizedIds]
+  );
+  const result = await runAutomationForApplications(userId, authorizedIds, "candidatura_autorizada_pelo_usuario");
+  res.json({
+    ok: true,
+    authorized: authorizedIds.length,
+    skipped: ids.length - authorizedIds.length,
+    modeLabel: "Autorização registrada",
+    ...result
+  });
 });
 
 apiRouter.post("/applications/ai-apply", async (req, res) => {
