@@ -22,6 +22,7 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/public ./public
 COPY --from=build --chown=node:node /app/data ./data
+COPY --from=build --chown=node:node /app/src/database/schema.sql ./src/database/schema.sql
 COPY --from=build --chown=node:node /app/agent-settings.json ./agent-settings.json
 
 RUN mkdir -p \
