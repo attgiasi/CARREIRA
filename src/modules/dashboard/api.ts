@@ -363,20 +363,21 @@ async function runAutomationForApplications(userId: number, ids: number[], mode:
   `, [userId, ...ids]);
 
   const actions: Array<Record<string, unknown>> = [];
-  for (const row of rows) {
-    const id = Number(row.id);
-    if (String(row.approval_status ?? "") !== "aprovado_pelo_usuario") {
-      actions.push({
-        id,
-        status: "bloqueada",
-        message: "A candidatura precisa ser aprovada antes da IA preparar o envio.",
-        nextStep: "Aprove a vaga e clique em Candidatar com IA novamente."
-      });
-      continue;
-    }
-    const decision = decideAutomation(row, profile, memory, settings);
-    const applicationStatus = applicationStatusForDecision(decision.status);
-    db.run(
+  db.transaction(() => {
+    for (const row of rows) {
+      const id = Number(row.id);
+      if (String(row.approval_status ?? "") !== "aprovado_pelo_usuario") {
+        actions.push({
+          id,
+          status: "bloqueada",
+          message: "A candidatura precisa ser aprovada antes da IA preparar o envio.",
+          nextStep: "Aprove a vaga e clique em Candidatar com IA novamente."
+        });
+        continue;
+      }
+      const decision = decideAutomation(row, profile, memory, settings);
+      const applicationStatus = applicationStatusForDecision(decision.status);
+      db.run(
       `UPDATE applications
        SET application_status = ?, automation_mode = ?, user_profile_id = ?, last_attempt_at = CURRENT_TIMESTAMP,
            updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ?
@@ -389,8 +390,8 @@ async function runAutomationForApplications(userId: number, ids: number[], mode:
         id,
         userId
       ]
-    );
-    db.run(
+      );
+      db.run(
       `INSERT INTO application_attempts (
         user_id, application_id, user_profile_id, mode, status, result_message, missing_questions_json, filled_fields_json
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -404,27 +405,28 @@ async function runAutomationForApplications(userId: number, ids: number[], mode:
         JSON.stringify(decision.questions),
         JSON.stringify(decision.filledFields)
       ]
-    );
-    for (const key of Object.keys(decision.filledFields)) {
-      db.run(
-        "UPDATE answer_memory SET usage_count = usage_count + 1, last_used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND user_profile_id = ? AND question_key = ?",
-        [userId, profile.id, key]
       );
+      for (const key of Object.keys(decision.filledFields)) {
+        db.run(
+          "UPDATE answer_memory SET usage_count = usage_count + 1, last_used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND user_profile_id = ? AND question_key = ?",
+          [userId, profile.id, key]
+        );
+      }
+      actions.push({
+        id,
+        profileId: profile.id,
+        profileName: profile.name,
+        status: decision.status,
+        message: decision.message,
+        nextStep: decision.nextStep,
+        questions: decision.questions,
+        filledFields: decision.filledFields,
+        canAutofill: decision.canAutofill,
+        canSubmitAutomatically: decision.canSubmitAutomatically,
+        url: row.url
+      });
     }
-    actions.push({
-      id,
-      profileId: profile.id,
-      profileName: profile.name,
-      status: decision.status,
-      message: decision.message,
-      nextStep: decision.nextStep,
-      questions: decision.questions,
-      filledFields: decision.filledFields,
-      canAutofill: decision.canAutofill,
-      canSubmitAutomatically: decision.canSubmitAutomatically,
-      url: row.url
-    });
-  }
+  });
 
   return { actions, profile };
 }
@@ -1547,12 +1549,14 @@ apiRouter.post("/applications/mark-sent", async (req, res) => {
     return;
   }
   const db = await CareerDatabase.open();
-  for (const id of ids) {
-    db.run(
-      "UPDATE applications SET approval_status = ?, authorization_status = 'concluida', application_status = ?, sent_by_agent = 1, applied_at = COALESCE(applied_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ? WHERE id = ? AND user_id = ?",
-      ["aprovado_pelo_usuario", "Candidatura enviada", `\nMarcada como enviada no painel em ${new Date().toISOString()}.`, id, userId]
-    );
-  }
+  db.transaction(() => {
+    for (const id of ids) {
+      db.run(
+        "UPDATE applications SET approval_status = ?, authorization_status = 'concluida', application_status = ?, sent_by_agent = 1, applied_at = COALESCE(applied_at, CURRENT_TIMESTAMP), updated_at = CURRENT_TIMESTAMP, notes = COALESCE(notes, '') || ? WHERE id = ? AND user_id = ?",
+        ["aprovado_pelo_usuario", "Candidatura enviada", `\nMarcada como enviada no painel em ${new Date().toISOString()}.`, id, userId]
+      );
+    }
+  });
   res.json({ ok: true, sent: ids.length });
 });
 

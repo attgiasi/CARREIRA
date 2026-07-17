@@ -3523,6 +3523,7 @@ async function applicationsV3(initialMessage = "") {
         <span class="status-pill ${gmailTone}"><i></i>Gmail ${gmail.connected ? "conectado" : "desconectado"}</span>
         <button id="syncApplicationsGmail" class="button secondary">${icon("refresh")} Atualizar retornos</button>
         <button id="selectVisibleApplications" class="button secondary">${icon("check")} Selecionar exibidas</button>
+        <button id="markSelectedApplicationsV3" class="button secondary" disabled>${icon("check-circle")} Confirmar envios <span id="applicationSentSelectionCount">0</span></button>
         <button id="authorizeApplicationsV3" class="button primary">${icon("wand")} Autorizar IA <span id="applicationSelectionCount">0</span></button>
       </div>
     </section>
@@ -3574,7 +3575,9 @@ async function applicationsV3(initialMessage = "") {
     const selected = [...document.querySelectorAll("#applicationsV3Mount .application-check:checked")];
     const authorizable = selected.filter((input) => input.closest(".application-card")?.querySelector("[data-authorize]")).length;
     document.querySelector("#applicationSelectionCount").textContent = String(selected.length);
+    document.querySelector("#applicationSentSelectionCount").textContent = String(selected.length);
     document.querySelector("#authorizeApplicationsV3").disabled = !selected.length || !authorizable;
+    document.querySelector("#markSelectedApplicationsV3").disabled = !selected.length;
   };
   const renderRows = () => {
     const active = readFilters();
@@ -3630,6 +3633,18 @@ async function applicationsV3(initialMessage = "") {
       toast(`${data.authorized} candidatura(s) autorizada(s).`, "success");
       await applicationsV3(`<strong>IA autorizada para ${data.authorized} candidatura(s).</strong><p>O resultado detalhado está aberto ao lado.</p>`);
       showAutomationDrawer(data);
+    } catch (error) {
+      toast(escapeHtml(error.message), "error");
+    }
+  };
+  document.querySelector("#markSelectedApplicationsV3").onclick = async () => {
+    const ids = [...document.querySelectorAll("#applicationsV3Mount .application-check:checked")]
+      .map((input) => Number(input.value)).filter(Boolean);
+    if (!ids.length) return toast("Selecione as candidaturas com envio confirmado.", "info");
+    try {
+      const data = await json("/api/applications/mark-sent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ids }) });
+      toast(`${data.sent} candidatura(s) confirmada(s) no histórico.`, "success");
+      await applicationsV3(`<strong>${data.sent} candidatura(s) confirmada(s).</strong><p>O painel agora acompanha os retornos reais dessas vagas.</p>`);
     } catch (error) {
       toast(escapeHtml(error.message), "error");
     }
