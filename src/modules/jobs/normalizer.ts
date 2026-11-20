@@ -6,6 +6,7 @@ import { scoreFit } from "./fitScorer.js";
 import { scoreHireChance } from "./hireChanceScorer.js";
 import { scoreJobQuality } from "./jobQualityScorer.js";
 import { classifyJob } from "./jobClassifier.js";
+import { isDirectJobLink } from "../sources/gmailJobAlerts.js";
 
 const assistedSources = new Set([
   "google-assisted-search",
@@ -91,7 +92,7 @@ export function normalizeJob(raw: RawJob, settings: AgentSettings): NormalizedJo
   job.hireChanceReason = hire.reason;
   job.jobQualityScore = scoreJobQuality(job);
   job.status = classifyJob(job);
-  if (assistedSources.has(job.source)) {
+  if (assistedSources.has(job.source) && !isDirectJobLink(job.url) && !raw.raw?.verifiedAt) {
     job.fitScore = Math.min(job.fitScore, 62);
     job.hireChanceScore = Math.min(job.hireChanceScore, 45);
     job.jobQualityScore = Math.min(job.jobQualityScore, 42);

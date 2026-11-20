@@ -24,13 +24,14 @@ export function parseBaseSalary(value: unknown): BaseSalary {
   const raw = String(value ?? "").trim();
   const normalized = raw.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   const unavailable = !raw || /nao informado|a combinar|combinar|confidencial|negociavel/.test(normalized);
-  const nonMonthly = /por\s+(hora|dia|evento|turno)|\/\s*(hora|dia)|diaria|freela|freelancer/.test(normalized);
-  const variableTerms = /bonifica|gratifica|beneficio|comissao|gorjeta|premiacao|variavel/.test(normalized);
-  const baseMarker = /salario|remuneracao|fixo|base/.test(normalized);
+  const nonMonthly = /por\s+(hora|dia|evento|turno|ano|semana)|\/\s*(hora|dia|ano|semana)|diaria|freela|freelancer|anual|semanal/.test(normalized);
+  const baseText = normalized.split(/\+|\bmais\b|\b(?:e|com)\s+(?:beneficios|gorjetas|comissao|bonificacao)/)[0];
+  const variableTerms = /bonifica|gratifica|beneficio|comissao|gorjeta|premiacao|variavel|caixinha/.test(baseText);
+  const baseMarker = /salario[ -]?base|fixo/.test(baseText);
   const variableOnly = variableTerms && !baseMarker;
   const matches = unavailable
     ? []
-    : [...raw.matchAll(/\d{1,3}(?:\.\d{3})+(?:,\d{2})?|\d{4,}(?:,\d{2})?|\d{1,3},\d{2}/g)].map((match) => moneyNumber(match[0])).filter((number) => Number.isFinite(number) && number > 0);
+    : [...baseText.matchAll(/\d{1,3}(?:\.\d{3})+(?:,\d{2})?|\d{4,}(?:,\d{2})?|\d{1,3},\d{2}/g)].map((match) => moneyNumber(match[0])).filter((number) => Number.isFinite(number) && number > 0);
   if (!matches.length || variableOnly) {
     return { raw, informed: false, monthly: !nonMonthly, variableOnly, minimum: 0, maximum: 0, midpoint: 0 };
   }

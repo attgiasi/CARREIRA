@@ -24,5 +24,9 @@ generated/reports/*
 !generated/reports/.gitkeep
 
 resumes/*.pdf
+resumes/users/
+data/*.tmp
+data/backups/
+output/
 !resumes/README.md
 output/pdf/*.pdf

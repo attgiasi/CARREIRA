@@ -6,6 +6,7 @@ let aiApplyReturnTab = "applications";
 let currentUser = null;
 let registrationOpen = true;
 let startupAiApplyPrefill = readAiApplyPrefillFromQuery();
+let activePreferenceSettings = null;
 
 if (localStorage.getItem("careerHunter:directFlowVersion") !== "2") {
   localStorage.removeItem("careerHunter:approved:filters");
@@ -153,6 +154,10 @@ async function json(url, options) {
     }
     throw new Error(typeof data === "string" ? data : data.error || "Erro na requisição");
   }
+  const method = String(options?.method || "GET").toUpperCase();
+  if (method !== "GET" && ["/api/settings", "/api/settings/import"].includes(url)) {
+    activePreferenceSettings = null;
+  }
   return data;
 }
 
@@ -206,6 +211,7 @@ async function submitAuth(event, mode) {
       body: JSON.stringify(payload)
     });
     currentUser = data.user;
+    activePreferenceSettings = null;
     renderShell();
     toast(mode === "register" ? "Conta criada com segurança." : "Login realizado.", "success");
     await loadStartupDestination();
@@ -224,6 +230,7 @@ async function boot() {
       return;
     }
     currentUser = session.user;
+    activePreferenceSettings = null;
     renderShell();
     await loadStartupDestination();
   } catch {
@@ -273,6 +280,126 @@ function setPath(obj, path, value) {
   }
   target[parts.at(-1)] = value;
 }
+
+function activePreferenceLabels(group) {
+  return Object.entries(group || {})
+    .filter(([, enabled]) => enabled === true)
+    .map(([key]) => labelize(key));
+}
+
+function compactPreferenceList(values, limit = 2, emptyLabel = "Não definido") {
+  const clean = (Array.isArray(values) ? values : []).map(String).map((value) => value.trim()).filter(Boolean);
+  if (!clean.length) return emptyLabel;
+  const visible = clean.slice(0, limit).join(", ");
+  return clean.length > limit ? `${visible} +${clean.length - limit}` : visible;
+}
+
+function preferenceFingerprint(settings) {
+  const relevant = {
+    roles: getPath(settings, "jobSearchPreferences.targetRoles", []),
+    locations: getPath(settings, "jobSearchPreferences.locations", {}),
+    workStyles: getPath(settings, "jobSearchPreferences.workStyles", {}),
+    contracts: getPath(settings, "jobSearchPreferences.contractTypes", {}),
+    salary: {
+      minimum: getPath(settings, "salaryPreferences.salaryByContractType.clt.minimumMonthly", 0),
+      rejectBelow: getPath(settings, "salaryPreferences.rejectBelowMinimum", false),
+      rejectUnknown: getPath(settings, "salaryPreferences.rejectWithoutSalary", false)
+    },
+    strategy: {
+      prepareScore: getPath(settings, "strategy.onlyPrepareAboveScore", 0),
+      applyScore: getPath(settings, "strategy.onlyApplyAboveScore", 0),
+      preferChance: getPath(settings, "strategy.preferHighHireChance", false)
+    },
+    sources: getPath(settings, "sources", {}),
+    automation: {
+      enabled: getPath(settings, "agent.enabled", false),
+      paused: getPath(settings, "agent.paused", false),
+      autoApply: getPath(settings, "applications.autoApply", false),
+      autofill: getPath(settings, "applications.allowBrowserAutofill", false),
+      approval: getPath(settings, "applications.requireApprovalBeforeApply", true)
+    }
+  };
+  const raw = JSON.stringify(relevant);
+  let hash = 2166136261;
+  for (let index = 0; index < raw.length; index += 1) {
+    hash ^= raw.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function setActivePreferenceSettings(settings) {
+  if (!settings || !currentUser) return false;
+  const fingerprint = preferenceFingerprint(settings);
+  const storageKey = `careerHunter:preferences:${currentUser.id || currentUser.email || "user"}`;
+  const previous = localStorage.getItem(storageKey);
+  const changed = Boolean(previous && previous !== fingerprint);
+  if (changed) {
+    localStorage.removeItem(filterKey("jobs-v3"));
+    localStorage.removeItem(filterKey("applications-v3"));
+  }
+  localStorage.setItem(storageKey, fingerprint);
+  activePreferenceSettings = settings;
+  return changed;
+}
+
+async function ensurePreferenceSettings(force = false) {
+  if (!currentUser) return null;
+  if (!force && activePreferenceSettings) return activePreferenceSettings;
+  const settings = await json("/api/settings");
+  setActivePreferenceSettings(settings);
+  return settings;
+}
+
+function preferredJobFilters(settings) {
+  const rejectBelow = Boolean(getPath(settings, "salaryPreferences.rejectBelowMinimum", false));
+  return {
+    minScore: Number(getPath(settings, "strategy.onlyPrepareAboveScore", 0) || 0),
+    minSalary: rejectBelow ? Number(getPath(settings, "salaryPreferences.salaryByContractType.clt.minimumMonthly", 0) || 0) : 0,
+    salaryKnownOnly: Boolean(getPath(settings, "salaryPreferences.rejectWithoutSalary", false)),
+    sort: getPath(settings, "strategy.preferHighHireChance", false) ? "chance" : "fit"
+  };
+}
+
+function preferenceContextStrip(settings) {
+  const roles = getPath(settings, "jobSearchPreferences.targetRoles", []);
+  const locations = getPath(settings, "jobSearchPreferences.locations.preferred", []);
+  const workStyles = activePreferenceLabels(getPath(settings, "jobSearchPreferences.workStyles", {}));
+  const minimumSalary = Number(getPath(settings, "salaryPreferences.salaryByContractType.clt.minimumMonthly", 0) || 0);
+  const minimumScore = Number(getPath(settings, "strategy.onlyPrepareAboveScore", 0) || 0);
+  const automationAllowed = Boolean(getPath(settings, "agent.enabled"))
+    && !Boolean(getPath(settings, "agent.paused"))
+    && Boolean(getPath(settings, "applications.autoApply"));
+  const approvalRequired = Boolean(getPath(settings, "applications.requireApprovalBeforeApply", true));
+  return `<section class="preference-context-strip" data-preference-context>
+    <div class="preference-context-title">
+      <span>${icon("sliders")}</span>
+      <div><small>PREFERÊNCIAS ATIVAS</small><strong>Esta tela segue a sua configuração</strong></div>
+    </div>
+    <div class="preference-context-items">
+      <div title="${escapeHtml((roles || []).join(", "))}">${icon("target")}<p><small>Cargos</small><strong>${escapeHtml(compactPreferenceList(roles, 2))}</strong></p></div>
+      <div title="${escapeHtml((locations || []).join(", "))}">${icon("map-pin")}<p><small>Locais</small><strong>${escapeHtml(compactPreferenceList(locations, 2))}</strong></p></div>
+      <div title="${escapeHtml(workStyles.join(", "))}">${icon("building") }<p><small>Modelo</small><strong>${escapeHtml(compactPreferenceList(workStyles, 2))}</strong></p></div>
+      <div>${icon("banknote")}<p><small>Regra mínima</small><strong>${minimumSalary ? `${formatMoney(minimumSalary)} · nota ${minimumScore}` : `Nota ${minimumScore}`}</strong></p></div>
+    </div>
+    <div class="preference-context-actions">
+      <span class="state-chip ${automationAllowed ? "success" : "info"}">${automationAllowed ? "Automação permitida" : "Modo assistido"}</span>
+      <small>${approvalRequired ? "Sua autorização é obrigatória" : "Siga as regras do portal"}</small>
+      <button data-tab="settings" class="text-button">Editar ${icon("arrow-right")}</button>
+    </div>
+  </section>`;
+}
+
+function reflectPreferenceContext() {
+  if (!currentUser || !activePreferenceSettings) return;
+  const page = app.firstElementChild;
+  if (!page || page.classList.contains("auth-shell") || page.querySelector("[data-preference-context]")) return;
+  page.insertAdjacentHTML("afterbegin", preferenceContextStrip(activePreferenceSettings));
+  refreshIcons(page.querySelector("[data-preference-context]"));
+}
+
+const preferenceContextObserver = new MutationObserver(() => queueMicrotask(reflectPreferenceContext));
+preferenceContextObserver.observe(app, { childList: true });
 
 function labelize(key) {
   const labels = {
@@ -840,15 +967,26 @@ function includesSearch(row, query) {
 }
 
 async function runScanAndRefresh(target = "dashboard") {
+  if (runScanAndRefresh.running) return;
+  runScanAndRefresh.running = true;
   toast("Buscando novas vagas. O radar está rodando uma nova pesquisa.", "info");
   try {
     const data = await json("/api/scan", { method: "POST" });
     if (!data.ok) throw new Error(data.error || "falha desconhecida");
-    toast("Busca concluída. Novas oportunidades foram verificadas.", "success");
+    toast(data.message || "Busca concluída.", data.inserted ? "success" : "info");
     await load(target);
   } catch (error) {
     toast(`Erro ao buscar vagas: ${escapeHtml(error.message)}`, "error");
+  } finally {
+    runScanAndRefresh.running = false;
   }
+}
+
+function searchReportPanel(report) {
+  if (!report) return "";
+  const labels = {ok:"Consultada", partial:"Parcial", error:"Indisponível", not_configured:"Configuração pendente"};
+  return `<section class="surface"><div class="section-heading-row"><h3>Última busca</h3><span>${escapeHtml(new Date(report.completedAt).toLocaleString("pt-BR"))}</span></div>
+    <p>${escapeHtml(report.message)}</p><details><summary>Resultado por fonte</summary><div class="stack-list">${(report.reports || []).map(r => `<div class="stack-item"><strong>${escapeHtml(r.source)}</strong><span>${escapeHtml(labels[r.status] || r.status)} · ${r.found} anúncios</span><small>${escapeHtml(r.message)}</small></div>`).join("")}</div></details></section>`;
 }
 
 function realLinkImporter(idPrefix, onImported) {
@@ -2946,6 +3084,7 @@ async function settings() {
 
 async function sourcesPage() {
   const data = await json("/api/sources");
+  const report = await json("/api/scan/latest");
   const rows = data.sources || [];
   const totalApplications = rows.reduce((sum, row) => sum + Number(row.applications || 0), 0);
   const totalSelected = rows.reduce((sum, row) => sum + Number(row.selected || 0), 0);
@@ -2968,6 +3107,7 @@ async function sourcesPage() {
     <div class="filter-line"><label>Filtrar fonte<input id="sourceFilter" placeholder="InfoJobs, LinkedIn, Gupy..."></label></div>
     <div id="sourceGrid" class="source-grid"></div>
   </section>
+  ${searchReportPanel(report)}
   <section class="page-panel agency-directory">
     <div class="section-head"><div><span class="eyebrow">Recrutamento</span><h3>Agências e portais confiáveis</h3></div><span class="data-caption">Curitiba e região</span></div>
     <div class="agency-grid">${(data.agencies || []).map((agency) => `<article class="agency-row">
@@ -3009,6 +3149,7 @@ async function settingsV3() {
     json("/api/settings/export?scope=github"),
     json("/api/gmail/status")
   ]);
+  setActivePreferenceSettings(data);
   const envLocked = Boolean(env.managedExternally || currentUser?.role !== "admin");
   const careerLevels = getPath(data, "jobSearchPreferences.careerLevels", {});
   const workStyles = getPath(data, "jobSearchPreferences.workStyles", {});
@@ -3087,6 +3228,7 @@ async function settingsV3() {
           <div class="settings-section-content">
             <div class="section-heading-row"><div><h3>Fontes de vagas</h3><p>Ative os canais que devem alimentar seu radar. Links finais têm prioridade sobre páginas de pesquisa.</p></div><button data-tab="sources" class="text-button">Ver desempenho das fontes ${icon("arrow-right")}</button></div>
             ${checkboxGrid("Sites, ATS e alertas", "sources", sources)}
+            ${textareaField("Páginas de carreira, uma por linha", "jobSearchPreferences.careerPageUrls", getPath(data, "jobSearchPreferences.careerPageUrls", []))}
             <div class="source-priority-note">${icon("shield")}<p><strong>Regra de qualidade</strong><span>Google pode ser usado para descobrir anúncios, mas o Ápice só mostra o endereço final da vaga quando houver um link individual válido.</span></p></div>
           </div>
         </section>
@@ -3191,7 +3333,7 @@ async function settingsV3() {
     if (element.type === "number") return Number(element.value || 0);
     if (element.tagName === "TEXTAREA") {
       const original = getPath(currentSettings, element.dataset.path);
-      return Array.isArray(original) ? element.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) : element.value;
+      return Array.isArray(original) || element.dataset.path === "jobSearchPreferences.careerPageUrls" ? element.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) : element.value;
     }
     return element.value;
   };
@@ -3206,9 +3348,12 @@ async function settingsV3() {
   const saveCurrentSettings = async (feedback = false) => {
     syncCode();
     await json("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: code.value });
+    const preferencesChanged = setActivePreferenceSettings(structuredClone(currentSettings));
+    document.querySelector("[data-preference-context]")?.remove();
+    reflectPreferenceContext();
     const time = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date());
     setSaveState(`Salvo às ${time}`, "saved");
-    if (feedback) toast("Configurações salvas nesta conta.", "success");
+    if (feedback) toast(preferencesChanged ? "Configurações salvas e aplicadas em todo o fluxo." : "Configurações salvas nesta conta.", "success");
   };
   const scheduleSave = () => {
     setSaveState("Alterações pendentes", "pending");
@@ -3247,6 +3392,7 @@ async function settingsV3() {
     setPath(currentSettings, "applications.requireApprovalBeforeApply", true);
     setPath(currentSettings, "applications.neverMassApplyWithoutApproval", true);
     await json("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(currentSettings) });
+    setActivePreferenceSettings(structuredClone(currentSettings));
     toast("Automação recomendada ativada. Aprovação e autorização continuam obrigatórias.", "success");
     await settingsV3();
   };
@@ -3299,10 +3445,13 @@ async function settingsV3() {
 }
 
 function monthlySalaryValue(value) {
-  const text = String(value || "").toLowerCase();
-  if (!text || /por hora|hora|di[aá]ria|por dia|evento|freela/.test(text)) return 0;
-  const matches = text.match(/\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?|\d+(?:,\d{1,2})?/g) || [];
-  const values = matches.map((item) => Number(item.replace(/\./g, "").replace(",", "."))).filter((item) => Number.isFinite(item) && item >= 500);
+  const text = String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (!text || /nao informado|a combinar|combinar|confidencial|negociavel/.test(text)) return 0;
+  if (/por\s+(hora|dia|evento|turno|ano|semana)|\/\s*(hora|dia|ano|semana)|diaria|freela|freelancer|anual|semanal/.test(text)) return 0;
+  const base = text.split(/\+|\bmais\b|\b(?:e|com)\s+(?:beneficios|gorjetas|comissao|bonificacao)/)[0];
+  if (/bonifica|gratifica|beneficio|comissao|gorjeta|premiacao|variavel|caixinha/.test(base) && !/salario[ -]?base|fixo/.test(base)) return 0;
+  const matches = base.match(/\d{1,3}(?:\.\d{3})+(?:,\d{2})?|\d{4,}(?:,\d{2})?|\d{1,3},\d{2}/g) || [];
+  const values = matches.map((item) => Number(item.replace(/\./g, "").replace(",", "."))).filter((item) => Number.isFinite(item) && item > 0);
   return values.length ? Math.min(...values) : 0;
 }
 
@@ -3356,6 +3505,7 @@ async function profilePage() {
           <div><strong>${escapeHtml(fileName(active.resume_file || careerData.applicationPositioning?.resumeFile || ""))}</strong><small>${active.resume_file ? "Vinculado ao perfil ativo" : "Envie o currículo principal"}</small></div>
           <span class="state-chip ${active.resume_file ? "success" : "warning"}">${active.resume_file ? "Pronto" : "Pendente"}</span>
         </div>
+        ${String(active.resume_file || "").startsWith("resumes/users/") ? `<a class="button secondary" href="/api/profiles/${Number(active.id)}/resume-file">${icon("download")} Baixar currículo</a>` : ""}
         <label class="upload-dropzone" for="profileResumeFileUpload">
           ${icon("upload")}<strong>Escolher novo currículo</strong><span>PDF, DOC, DOCX, TXT ou MD</span>
           <input id="profileResumeFileUpload" type="file" accept=".pdf,.doc,.docx,.txt,.md">
@@ -3366,6 +3516,7 @@ async function profilePage() {
       </section>
     </div>
 
+    ${careerData.resumeFacts ? `<section class="surface"><div class="section-heading-row"><h3>Experiências do currículo</h3><span class="soft-badge">${escapeHtml(careerData.resumeFacts.sourceFile || "Arquivo enviado")}</span></div><div class="stack-list">${(careerData.resumeFacts.experiences || []).map(exp => `<div class="stack-item"><strong>${escapeHtml(exp.title)} · ${escapeHtml(exp.company)}</strong><span>${escapeHtml(String(exp.start || "").split("-").reverse().join("/"))} a ${exp.current ? "atualmente" : escapeHtml(String(exp.end || "").split("-").reverse().join("/"))}</span><p>${escapeHtml(exp.description)}</p></div>`).join("")}</div></section>` : ""}
     <div class="profile-intelligence-grid">
       <section class="surface strengths-panel">
         <div class="section-heading-row"><div><span class="section-kicker">POSICIONAMENTO</span><h3>Forças que a IA deve destacar</h3></div>${icon("sparkles")}</div>
@@ -3669,17 +3820,19 @@ async function applicationsV3(initialMessage = "") {
 }
 
 async function jobsV3(initialMessage = "") {
-  const rows = await json("/api/jobs");
+  const [rows, preferences] = await Promise.all([json("/api/jobs"), ensurePreferenceSettings()]);
+  const preferenceDefaults = preferredJobFilters(preferences || {});
   const filters = getSavedFilters("jobs-v3", {
     q: "",
     source: "all",
     work: "all",
     status: "all",
-    minScore: 0,
-    minSalary: 0,
+    minScore: preferenceDefaults.minScore,
+    minSalary: preferenceDefaults.minSalary,
+    salaryKnownOnly: preferenceDefaults.salaryKnownOnly,
     directOnly: false,
     hideDuplicates: true,
-    sort: "fit"
+    sort: preferenceDefaults.sort
   });
   const sources = uniqueSources(rows);
   const workModels = uniqueValues(rows, "work_model");
@@ -3720,6 +3873,7 @@ async function jobsV3(initialMessage = "") {
           <label>Classificação<select id="jobStatusV3">${optionList(statuses, filters.status, "Todas")}</select></label>
           <label>Nota mínima<input id="jobMinScoreV3" type="number" min="0" max="100" value="${Number(filters.minScore || 0)}"></label>
           <label>Salário-base mínimo<input id="jobMinSalaryV3" type="number" min="0" step="500" value="${Number(filters.minSalary || 0)}"></label>
+          <label class="switch-line"><input id="jobSalaryKnownV3" type="checkbox" ${filters.salaryKnownOnly ? "checked" : ""}><span><strong>Somente salário informado</strong><small>Segue a sua regra para anúncios sem salário-base.</small></span></label>
           <label class="switch-line"><input id="jobDirectV3" type="checkbox" ${filters.directOnly ? "checked" : ""}><span><strong>Somente link direto</strong><small>Oculta páginas de pesquisa e fontes sem formulário.</small></span></label>
           <label class="switch-line"><input id="jobDuplicatesV3" type="checkbox" ${filters.hideDuplicates ? "checked" : ""}><span><strong>Ocultar duplicadas</strong><small>Exibe apenas uma oportunidade de cada grupo.</small></span></label>
           <button id="clearJobFiltersV3" class="button ghost">${icon("x")} Limpar filtros</button>
@@ -3744,6 +3898,7 @@ async function jobsV3(initialMessage = "") {
     status: document.querySelector("#jobStatusV3").value,
     minScore: Number(document.querySelector("#jobMinScoreV3").value || 0),
     minSalary: Number(document.querySelector("#jobMinSalaryV3").value || 0),
+    salaryKnownOnly: document.querySelector("#jobSalaryKnownV3").checked,
     directOnly: document.querySelector("#jobDirectV3").checked,
     hideDuplicates: document.querySelector("#jobDuplicatesV3").checked,
     sort: document.querySelector("#jobSortV3").value
@@ -3762,7 +3917,9 @@ async function jobsV3(initialMessage = "") {
       if (active.work !== "all" && String(row.work_model) !== active.work) return false;
       if (active.status !== "all" && String(row.status) !== active.status) return false;
       if (Number(row.fit_score || 0) < active.minScore) return false;
-      if (active.minSalary && monthlySalaryValue(row.salary) < active.minSalary) return false;
+      const salaryValue = monthlySalaryValue(row.salary);
+      if (active.minSalary && salaryValue > 0 && salaryValue < active.minSalary) return false;
+      if (active.salaryKnownOnly && salaryValue <= 0) return false;
       if (active.directOnly && !hasDirectJobUrl(row)) return false;
       return true;
     });
@@ -3782,7 +3939,7 @@ async function jobsV3(initialMessage = "") {
       if (active.sort === "chance") return Number(right.hire_chance_score || 0) - Number(left.hire_chance_score || 0) || Number(right.fit_score || 0) - Number(left.fit_score || 0);
       return Number(right.fit_score || 0) - Number(left.fit_score || 0) || Number(right.job_quality_score || 0) - Number(left.job_quality_score || 0);
     });
-    const activeCount = [active.source !== "all", active.work !== "all", active.status !== "all", active.minScore > 0, active.minSalary > 0, active.directOnly, active.hideDuplicates].filter(Boolean).length;
+    const activeCount = [active.source !== "all", active.work !== "all", active.status !== "all", active.minScore > 0, active.minSalary > 0, active.salaryKnownOnly, active.directOnly, active.hideDuplicates].filter(Boolean).length;
     document.querySelector("#activeJobFilters").textContent = activeCount ? `${activeCount} ativos` : "";
     document.querySelector("#visibleJobsCount").textContent = String(visible.length);
     document.querySelector("#jobFilterSummary").textContent = visible.length ? `${visible.filter(hasDirectJobUrl).length} com candidatura direta · ${visible.filter((row) => Number(row.fit_score || 0) >= 85).length} recomendadas` : "Nenhuma vaga corresponde aos filtros";
@@ -3807,7 +3964,7 @@ async function jobsV3(initialMessage = "") {
     localStorage.removeItem(filterKey("jobs-v3"));
     jobsV3(initialMessage);
   };
-  document.querySelectorAll("#jobSearchV3, #jobSourceV3, #jobWorkV3, #jobStatusV3, #jobMinScoreV3, #jobMinSalaryV3, #jobDirectV3, #jobDuplicatesV3, #jobSortV3").forEach((element) => element.addEventListener("input", renderRows));
+  document.querySelectorAll("#jobSearchV3, #jobSourceV3, #jobWorkV3, #jobStatusV3, #jobMinScoreV3, #jobMinSalaryV3, #jobSalaryKnownV3, #jobDirectV3, #jobDuplicatesV3, #jobSortV3").forEach((element) => element.addEventListener("input", renderRows));
   document.querySelector("#approveSelectedJobsV3").onclick = async () => {
     const ids = [...document.querySelectorAll("#jobsV3Mount .job-check:checked")].map((input) => Number(input.value)).filter(Boolean);
     if (!ids.length) return toast("Selecione pelo menos uma vaga.", "info");
@@ -3997,19 +4154,22 @@ async function load(tab) {
   currentTab = tab || "dashboard";
   updateShellState(currentTab);
   try {
-    if (tab === "jobs") return jobsV3();
-    if (tab === "approved") return applications();
-    if (tab === "informal") return informal();
-    if (tab === "applications") return applicationsV3();
-    if (tab === "returns") return returnsPage();
-    if (tab === "sources") return sourcesPage();
-    if (tab === "actions") return returnsPage();
-    if (tab === "aiApply") return aiApplyPage();
-    if (tab === "accounts") return accountsPage();
-    if (["profile", "profiles", "resume"].includes(tab)) return profilePage();
-    if (tab === "settings") return settingsV3();
-    if (tab === "logs") return logs();
-    return dashboardV3();
+    await ensurePreferenceSettings();
+    if (tab === "jobs") await jobsV3();
+    else if (tab === "approved") await applications();
+    else if (tab === "informal") await informal();
+    else if (tab === "applications") await applicationsV3();
+    else if (tab === "returns") await returnsPage();
+    else if (tab === "sources") await sourcesPage();
+    else if (tab === "actions") await returnsPage();
+    else if (tab === "aiApply") await aiApplyPage();
+    else if (tab === "accounts") await accountsPage();
+    else if (["profile", "profiles", "resume"].includes(tab)) await profilePage();
+    else if (tab === "settings") await settingsV3();
+    else if (tab === "logs") await logs();
+    else await dashboardV3();
+    reflectPreferenceContext();
+    window.scrollTo(0, 0);
   } catch (error) {
     app.innerHTML = `<section class="notice-panel"><h2>Algo não carregou</h2><p>${escapeHtml(error.message)}</p><button data-tab="dashboard">Voltar ao painel</button></section>`;
     toast(escapeHtml(error.message), "error");
@@ -4061,6 +4221,7 @@ header.addEventListener("click", (event) => {
   if (logout) {
     json("/api/auth/logout", { method: "POST" }).finally(() => {
       currentUser = null;
+      activePreferenceSettings = null;
       boot();
     });
   }

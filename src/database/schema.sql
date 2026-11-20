@@ -341,3 +341,10 @@ CREATE TABLE IF NOT EXISTS metrics (
   informal_potential_income REAL,
   response_rate REAL
 );
+CREATE TABLE IF NOT EXISTS job_search_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_job_search_runs_user ON job_search_runs(user_id, id);

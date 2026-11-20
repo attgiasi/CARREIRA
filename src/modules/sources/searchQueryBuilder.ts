@@ -15,17 +15,14 @@ export function configuredLocations(settings: AgentSettings): string[] {
 }
 
 export function limitedSearchPairs(settings: AgentSettings, maxPairs = 18): Array<{ role: string; location: string }> {
-  const roles = configuredRoles(settings).slice(0, 9);
-  const locations = configuredLocations(settings).slice(0, 6);
+  const roles = [...new Set(configuredRoles(settings))];
+  const locations = [...new Set(configuredLocations(settings))];
   const pairs: Array<{ role: string; location: string }> = [];
-  const seen = new Set<string>();
-  for (let index = 0; pairs.length < maxPairs && index < roles.length * locations.length * 2; index += 1) {
-    const role = roles[index % roles.length];
-    const location = locations[index % locations.length];
-    const key = `${role}|${location}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    pairs.push({ role, location });
+  // Rotate the first location per role, then cover every remaining combination.
+  for (let round = 0; round < locations.length; round += 1) {
+    for (let index = 0; index < roles.length && pairs.length < maxPairs; index += 1) {
+      pairs.push({ role: roles[index], location: locations[(index + round) % locations.length] });
+    }
   }
   return pairs;
 }

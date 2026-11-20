@@ -2,7 +2,7 @@ import { AgentSettings, NormalizedJob } from "../../types.js";
 import { targetRoles } from "../profile/preferencesManager.js";
 import { userMeetsEducation } from "../profile/educationProfile.js";
 import { canMeetDriverRequirement } from "../profile/licenseProfile.js";
-import { locationMatches } from "./locationMatcher.js";
+import { configuredLocationMatches } from "./searchEligibility.js";
 import { salaryNumber } from "./salaryExtractor.js";
 
 export function scoreFit(job: NormalizedJob, settings: AgentSettings): { score: number; reason: string } {
@@ -28,7 +28,7 @@ export function scoreFit(job: NormalizedJob, settings: AgentSettings): { score: 
     score -= 25;
     reasons.push("fora do foco atual de hospitalidade premium");
   }
-  if (locationMatches(`${job.location} ${job.workModel}`)) {
+  if (configuredLocationMatches(`${job.location} ${job.workModel}`, settings)) {
     score += 10;
     reasons.push("local/modelo compatível");
   }

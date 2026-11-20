@@ -46,6 +46,7 @@
     "freelancerEventos": true
   },
   "jobSearchPreferences": {
+    "careerPageUrls": [],
     "targetRoles": [
       "Bartender Sênior",
       "Bartender",

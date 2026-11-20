@@ -53,7 +53,7 @@ function githubSettings(settings: AgentSettings): Record<string, unknown> {
     informalWork: settings.informalWork,
     sources: settings.sources,
     strategy: settings.strategy,
-    applications: settings.applications,
+    applications: Object.fromEntries(Object.entries(settings.applications).filter(([key]) => key !== "originalResumeFile")),
     platformRules: settings.platformRules,
     safety: settings.safety,
     badJobDetection: settings.badJobDetection

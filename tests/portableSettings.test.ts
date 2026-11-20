@@ -9,6 +9,7 @@ test("exportação para GitHub remove dados pessoais e credenciais", () => {
   withUnsafeValue.profile.name = "Pessoa de Teste";
   withUnsafeValue.profile.email = "pessoa@example.com";
   withUnsafeValue.profile.city = "Cidade de Teste";
+  withUnsafeValue.applications.originalResumeFile = "resumes/users/1/DocumentoPrivado.pdf";
   (withUnsafeValue.applications as Record<string, unknown>).apiKey = "nao-pode-sair";
 
   const exported = exportSettings(withUnsafeValue, "github");
@@ -18,6 +19,7 @@ test("exportação para GitHub remove dados pessoais e credenciais", () => {
   assert.doesNotMatch(raw, /pessoa@example\.com/i);
   assert.doesNotMatch(raw, /Pessoa de Teste/i);
   assert.doesNotMatch(raw, /nao-pode-sair/i);
+  assert.doesNotMatch(raw, /DocumentoPrivado/);
   assert.equal((exported.settings.profile as Record<string, unknown>).city, "Cidade de Teste");
 });
 

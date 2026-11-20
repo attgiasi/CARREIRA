@@ -28,3 +28,13 @@ test("navegação principal mantém apenas o fluxo essencial", () => {
   assert.match(appSource, /\["applications", "Candidaturas"\]/);
   assert.match(appSource, /\["profile", "Meu perfil"\]/);
 });
+
+test("configuração da conta acompanha todo o fluxo e renova filtros", () => {
+  assert.match(appSource, /ensurePreferenceSettings\(\)/);
+  assert.match(appSource, /data-preference-context/);
+  assert.match(appSource, /preferenceContextObserver\.observe\(app/);
+  assert.match(appSource, /preferredJobFilters\(preferences/);
+  assert.match(appSource, /localStorage\.removeItem\(filterKey\("jobs-v3"\)\)/);
+  assert.match(appSource, /Configurações salvas e aplicadas em todo o fluxo/);
+  assert.match(apiSource, /loadUserSettings\(db, userId\)/);
+});

@@ -2,8 +2,9 @@ import { Router } from "express";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { scanJobs } from "../jobs/searchService.js";
+import { isSearchPage, readJobPage } from "../sources/jobPageReader.js";
+import { exclusionReason } from "../jobs/searchEligibility.js";
 import { CareerDatabase } from "../../database/db.js";
 import { loadSettings } from "../../config/settings.js";
 import { exportSettings, importSettings, SettingsExportScope } from "../../config/portableSettings.js";
@@ -36,7 +37,6 @@ import {
 } from "../auth/auth.js";
 
 export const apiRouter = Router();
-const execFileAsync = promisify(execFile);
 const envPath = path.resolve(process.cwd(), ".env");
 const allowedResumeExtensions = new Set([".pdf", ".doc", ".docx", ".txt", ".md"]);
 
@@ -999,6 +999,8 @@ apiRouter.put("/profiles/:id", async (req, res) => {
   }
   const db = await CareerDatabase.open();
   const userId = currentUserId(req);
+  const existing = db.query<Record<string,unknown>>("SELECT * FROM candidate_profiles WHERE id = ? AND user_id = ?",[id,userId])[0];
+  if (!existing) { res.status(404).json({error:"Perfil não encontrado."}); return; }
   if (body.is_active) db.run("UPDATE candidate_profiles SET is_active = 0 WHERE user_id = ? AND id <> ?", [userId, id]);
   db.run(
     `UPDATE candidate_profiles
@@ -1017,11 +1019,19 @@ apiRouter.put("/profiles/:id", async (req, res) => {
       String(body.summary ?? ""),
       String(body.resume_file ?? ""),
       boolNumber(body.is_active),
-      JSON.stringify(body),
+      JSON.stringify({...JSON.parse(String(existing.raw_json || "{}")),...body}),
       id,
       userId
     ]
   );
+  if (body.is_active) {
+    const settings = loadUserSettings(db,userId);
+    for (const key of ["name","email","phone","linkedin","city","state","country","summary"] as const) {
+      settings.profile[key] = String(body[key] ?? "");
+    }
+    settings.applications.originalResumeFile = String(body.resume_file || "");
+    saveUserSettings(db,userId,settings);
+  }
   res.json({ ok: true });
 });
 
@@ -1089,7 +1099,8 @@ apiRouter.post("/profiles/:id/resume", async (req, res) => {
   }
   const raw = profile.raw_json ? JSON.parse(String(profile.raw_json)) as Record<string, unknown> : {};
   raw.resumeImportedAt = new Date().toISOString();
-  raw.resumeTextPreview = resumeText ? resumeText.slice(0, 5000) : raw.resumeTextPreview;
+  raw.resumeTextPreview = resumeText ? resumeText.slice(0, 5000) : "";
+  delete raw.resumeFacts;
   raw.needsResume = false;
   const resumeRef = `resumes/users/${userId}/${fileName}`;
   db.run(
@@ -1098,7 +1109,25 @@ apiRouter.post("/profiles/:id/resume", async (req, res) => {
      WHERE id = ? AND user_id = ?`,
     [resumeRef, JSON.stringify(raw), id, userId]
   );
+  if (profile.is_active) {
+    const settings = loadUserSettings(db,userId);
+    settings.applications.originalResumeFile = resumeRef;
+    settings.applications.resumeSourcePolicy = "original_only";
+    saveUserSettings(db,userId,settings);
+  }
   res.json({ ok: true, file: fileName, resume_file: resumeRef });
+});
+
+apiRouter.get("/profiles/:id/resume-file", async (req, res) => {
+  const userId = currentUserId(req);
+  const db = await CareerDatabase.open();
+  const row = db.query<{resume_file:string}>("SELECT resume_file FROM candidate_profiles WHERE id = ? AND user_id = ?",[Number(req.params.id),userId])[0];
+  const prefix = `resumes/users/${userId}/`;
+  if (!row?.resume_file?.startsWith(prefix)) { res.status(404).json({error:"Arquivo individual indisponivel. Envie seu curriculo no perfil."}); return; }
+  const folder = ensureUserResumeFolder(userId);
+  const file = path.resolve(folder,row.resume_file.slice(prefix.length));
+  if (!file.startsWith(`${folder}${path.sep}`) || !fs.existsSync(file)) { res.status(404).json({error:"Arquivo nao encontrado."}); return; }
+  res.download(file,path.basename(file));
 });
 
 apiRouter.get("/connected-accounts", async (req, res) => {
@@ -1264,22 +1293,26 @@ apiRouter.get("/jobs", async (req, res) => {
       j.fit_score DESC,
       j.job_quality_score DESC,
       j.risk_score ASC
-    LIMIT 300
   `, [userId, userId]);
-  res.json(attachDuplicateMetadata(rows));
+  const settings = loadUserSettings(db, userId);
+  res.json(attachDuplicateMetadata(rows.filter(row => !exclusionReason(normalizeJob({
+    title:String(row.title),company:String(row.company || ""),location:String(row.location || ""),
+    source:String(row.source),url:String(row.url || ""),description:String(row.description || ""),salary:String(row.salary || ""),
+    raw:JSON.parse(String(row.raw_json || "{}"))
+  }, settings),settings)).slice(0,300)));
+});
+
+apiRouter.get("/scan/latest", async (req, res) => {
+  const db = await CareerDatabase.open();
+  const row = db.query<{result_json:string}>("SELECT result_json FROM job_search_runs WHERE user_id = ? ORDER BY id DESC LIMIT 1",[currentUserId(req)])[0];
+  res.json(row ? JSON.parse(row.result_json) : null);
 });
 
 apiRouter.post("/scan", async (req, res) => {
   try {
     const userId = currentUserId(req);
-    const entry = path.resolve(process.cwd(), "dist/src/index.js");
-    const { stdout, stderr } = await execFileAsync(process.execPath, [entry, "scan"], {
-      cwd: process.cwd(),
-      env: { ...process.env, CAREER_HUNTER_USER_ID: String(userId) },
-      timeout: 180000,
-      maxBuffer: 1024 * 1024 * 4
-    });
-    res.json({ ok: true, stdout, stderr });
+    const result = await scanJobs(userId);
+    res.json({ ok: true, ...result });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     res.status(500).json({ ok: false, error: message });
@@ -1296,22 +1329,23 @@ apiRouter.post("/manual-urls", async (req, res) => {
     res.status(400).json({ error: `Link inválido. ${message}` });
     return;
   }
-  if (isGoogleSearchUrl(url)) {
+  if (isSearchPage(url)) {
     res.status(400).json({ error: "Cole o link final da vaga, não a página de pesquisa do Google." });
     return;
   }
 
-  const file = path.resolve(process.cwd(), "data/manual-urls.txt");
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const existing = fs.existsSync(file)
-    ? fs.readFileSync(file, "utf8").split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-    : [];
-  const alreadyExists = existing.includes(url);
-  if (!alreadyExists) fs.appendFileSync(file, `${url}\n`, "utf8");
-
+  let extracted;
+  try {
+    extracted = (await readJobPage(url))[0];
+    if (!extracted) throw new Error("Nao foi possivel verificar um anuncio individual nesta pagina. Abra a fonte oficial; nenhuma vaga foi criada.");
+  } catch (error) {
+    res.status(422).json({error:error instanceof Error ? error.message : "Nao foi possivel ler a vaga."});
+    return;
+  }
   const db = await CareerDatabase.open();
   const settings = loadUserSettings(db, userId);
-  const job = normalizeJob(manualJobFromUrl(url, req.body as Record<string, unknown>), settings);
+  const job = normalizeJob(extracted, settings);
+  const alreadyExists = Boolean(db.query("SELECT id FROM jobs WHERE user_id = ? AND external_id = ?",[userId,job.externalId])[0]);
   db.insertJob(job, userId);
   const saved = db.query<Record<string, unknown>>("SELECT id, title, source, url FROM jobs WHERE user_id = ? AND external_id = ? LIMIT 1", [userId, job.externalId])[0];
   res.json({
@@ -1992,7 +2026,7 @@ apiRouter.post("/environment", (req, res) => {
 apiRouter.get("/resumes", (req, res) => {
   const userId = currentUserId(req);
   const folder = path.resolve(process.cwd(), "resumes");
-  const sharedFiles = fs.existsSync(folder)
+  const sharedFiles = userId === Number(process.env.CAREER_HUNTER_USER_ID || 1) && fs.existsSync(folder)
     ? fs.readdirSync(folder).filter((file) => /\.(pdf|docx?|md)$/i.test(file) && file.toLowerCase() !== "readme.md")
     : [];
   const userFolder = process.env.STORAGE_ROOT?.trim()
@@ -2011,7 +2045,7 @@ apiRouter.get("/career-profile", async (req, res) => {
   const settings = loadUserSettings(db, userId);
   const activeProfile = getActiveCandidateProfile(db, userId);
   const folder = path.resolve(process.cwd(), "resumes");
-  const sharedResumes = fs.existsSync(folder)
+  const sharedResumes = userId === Number(process.env.CAREER_HUNTER_USER_ID || 1) && fs.existsSync(folder)
     ? fs.readdirSync(folder).filter((file) => /\.(pdf|docx?|md)$/i.test(file) && file.toLowerCase() !== "readme.md")
     : [];
   const userFolder = process.env.STORAGE_ROOT?.trim()
@@ -2023,10 +2057,10 @@ apiRouter.get("/career-profile", async (req, res) => {
   const resumes = [...sharedResumes, ...userResumes];
   const generatedResumeFolder = path.resolve(process.cwd(), "generated/resumes");
   const generatedCoverFolder = path.resolve(process.cwd(), "generated/cover-letters");
-  const generatedResumes = fs.existsSync(generatedResumeFolder)
+  const generatedResumes = userId === Number(process.env.CAREER_HUNTER_USER_ID || 1) && fs.existsSync(generatedResumeFolder)
     ? fs.readdirSync(generatedResumeFolder).filter((file) => /\.(md|docx?|pdf)$/i.test(file)).slice(-12).reverse()
     : [];
-  const generatedCoverLetters = fs.existsSync(generatedCoverFolder)
+  const generatedCoverLetters = userId === Number(process.env.CAREER_HUNTER_USER_ID || 1) && fs.existsSync(generatedCoverFolder)
     ? fs.readdirSync(generatedCoverFolder).filter((file) => /\.(md|docx?|pdf)$/i.test(file)).slice(-12).reverse()
     : [];
   res.json({
@@ -2036,12 +2070,15 @@ apiRouter.get("/career-profile", async (req, res) => {
     resumes,
     generatedResumes,
     generatedCoverLetters,
-    strengths: [
-      "Mais de 12 anos em hospitalidade, bares, eventos e atendimento ao cliente.",
-      "Gestão de operação, padronização, treinamento e rotina de serviço.",
-      "Boa aderência para atendimento, backoffice, experiência do cliente e análise operacional.",
-      "Comunicação com cliente, organização de eventos e leitura de risco operacional."
-    ],
+    strengths: (() => {
+      const row = db.query<{raw_json:string}>("SELECT raw_json FROM candidate_profiles WHERE id = ? AND user_id = ?",[activeProfile.id,userId])[0];
+      const facts = JSON.parse(row?.raw_json || "{}").resumeFacts;
+      return Array.isArray(facts?.skills) ? facts.skills : [];
+    })(),
+    resumeFacts: (() => {
+      const row = db.query<{raw_json:string}>("SELECT raw_json FROM candidate_profiles WHERE id = ? AND user_id = ?",[activeProfile.id,userId])[0];
+      return JSON.parse(row?.raw_json || "{}").resumeFacts || null;
+    })(),
     applicationPositioning: {
       headline: "Hospitalidade premium, operação e experiência do cliente com visão prática de negócio.",
       safeClaims: [

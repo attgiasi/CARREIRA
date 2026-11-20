@@ -3,7 +3,7 @@ import { chooseBaseCv } from "../profile/cvManager.js";
 import { saveCoverLetter } from "./coverLetterGenerator.js";
 
 export function buildApplicationPacket(jobId: number, job: NormalizedJob, settings: AgentSettings, originalResumeFile = "") {
-  const resumeFile = originalResumeFile.trim() || chooseBaseCv(job);
+  const resumeFile = originalResumeFile.trim() || String(settings.applications.originalResumeFile || "").trim() || chooseBaseCv(job);
   return {
     jobId,
     cvVersion: job.careerTrack,

@@ -1,4 +1,5 @@
 import { AgentSettings } from "../../types.js";
+import { isDirectJobLink } from "../sources/gmailJobAlerts.js";
 
 export interface CandidateProfile {
   id: number;
@@ -155,7 +156,11 @@ export function decideAutomation(
     "Bairro": memoryValue(memory, "address.neighborhood"),
     "CEP": memoryValue(memory, "address.postalCode"),
     "Meio de transporte": memoryValue(memory, "work.transport"),
-    "Inglês": firstMemoryValue(memory, "language.english", "languages.english")
+    "Inglês": firstMemoryValue(memory, "language.english", "languages.english"),
+    "Espanhol": firstMemoryValue(memory, "language.spanish", "languages.spanish"),
+    "Experiências profissionais": memoryValue(memory, "experience.history"),
+    "Formação": memoryValue(memory, "education.degrees"),
+    "Cursos e especializações": memoryValue(memory, "certifications.courses")
   };
 
   if (questions.length) {
@@ -194,7 +199,7 @@ export function decideAutomation(
     };
   }
 
-  if (assistedSources.has(source)) {
+  if (assistedSources.has(source) && !isDirectJobLink(url)) {
     return {
       status: "precisa_vaga_real",
       message: "Esta entrada ainda é uma busca assistida, não o formulário real da vaga.",

@@ -17,11 +17,22 @@ function resolveDatabasePath(): string {
 }
 
 export class CareerDatabase {
+  private static instances = new Map<string, Promise<CareerDatabase>>();
   private transactionDepth = 0;
 
   private constructor(private readonly db: Database) {}
 
   static async open(): Promise<CareerDatabase> {
+    const key = resolveDatabasePath();
+    let instance = this.instances.get(key);
+    if (!instance) {
+      instance = this.create().catch(error => { this.instances.delete(key); throw error; });
+      this.instances.set(key, instance);
+    }
+    return instance;
+  }
+
+  private static async create(): Promise<CareerDatabase> {
     const dbPath = resolveDatabasePath();
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
     const SQL = await initSqlJs({
@@ -137,7 +148,9 @@ export class CareerDatabase {
 
   save(): void {
     const dbPath = resolveDatabasePath();
-    fs.writeFileSync(dbPath, Buffer.from(this.db.export()));
+    const temporaryPath = `${dbPath}.${process.pid}.tmp`;
+    fs.writeFileSync(temporaryPath, Buffer.from(this.db.export()));
+    fs.renameSync(temporaryPath, dbPath);
   }
 
   run(sql: string, params: unknown[] = []): void {
